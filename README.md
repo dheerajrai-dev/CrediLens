@@ -135,11 +135,9 @@ Credlen/
 ├── main.py                     # FastAPI application entrypoint
 ├── requirements.txt            # Runtime dependencies (excludes Jupyter)
 ├── credit_risk_dataset.csv     # Source credit risk dataset
-├── artifacts/                  # Frozen model artifacts & metadata
-│   ├── final_model.joblib      # Calibrated XGBoost pipeline
-│   ├── metrics.json            # Official test set metrics
-│   ├── model_metadata.json     # Feature schema & version specs
-│   └── threshold.json          # Optimal decision threshold
+├── model/                      # Trained model directory
+│   ├── Credit_risk_model.pkl   # Calibrated XGBoost pipeline
+│   └── best_threshold.pkl      # Optimal decision threshold (0.7431)
 ├── backend/                    # FastAPI backend layer
 │   ├── __init__.py
 │   └── app/
