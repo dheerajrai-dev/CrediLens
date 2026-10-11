@@ -380,20 +380,51 @@ class ModelService:
 
     def predict_batch(self, df_input: pd.DataFrame) -> BatchPredictionResponse:
         """Runs batch prediction using ONLY the final selected model (Calibrated XGBoost)."""
+        if df_input is None or len(df_input) == 0:
+            return BatchPredictionResponse(
+                total_records=0,
+                predicted_defaults=0,
+                predicted_repays=0,
+                default_rate=0.0,
+                average_risk=0.0,
+                results=[]
+            )
+
         df = df_input.copy()
+        # Normalize column names: strip whitespace and convert to lowercase
+        df.columns = [str(c).strip().lower() for c in df.columns]
+
         required_cols = [
             "person_age", "person_income", "person_home_ownership", "person_emp_length",
             "loan_intent", "loan_grade", "loan_amnt", "loan_int_rate",
             "loan_percent_income", "cb_person_default_on_file", "cb_person_cred_hist_length"
         ]
-        
-        # Check if loan_percent_income is present or needs auto-calculation
+
+        # Calculate loan_percent_income if missing
         if "loan_percent_income" not in df.columns:
-            df["loan_percent_income"] = (df["loan_amnt"] / df["person_income"].replace(0, 1)).round(2).clip(0, 1.5)
-            
+            if "loan_amnt" in df.columns and "person_income" in df.columns:
+                incomes = pd.to_numeric(df["person_income"], errors="coerce").fillna(1.0).replace(0, 1.0)
+                amounts = pd.to_numeric(df["loan_amnt"], errors="coerce").fillna(0.0)
+                df["loan_percent_income"] = (amounts / incomes).round(2).clip(0.0, 1.5)
+            else:
+                raise ValueError("Missing required column in CSV: loan_percent_income")
+
         for col in required_cols:
             if col not in df.columns:
                 raise ValueError(f"Missing required column in CSV: {col}")
+
+        # Ensure correct types for numeric columns
+        num_cols = [
+            "person_age", "person_income", "person_emp_length",
+            "loan_amnt", "loan_int_rate", "loan_percent_income", "cb_person_cred_hist_length"
+        ]
+        for col in num_cols:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        # Ensure categorical columns are clean strings
+        cat_cols = ["person_home_ownership", "loan_intent", "loan_grade", "cb_person_default_on_file"]
+        for col in cat_cols:
+            df[col] = df[col].astype(str).str.strip().str.upper()
 
         X = df[required_cols]
         probas = self.final_model.predict_proba(X)[:, 1]
@@ -407,7 +438,7 @@ class ModelService:
                 predicted_defaults += 1
             decision = "Default" if pred == 1 else "Repaid"
             risk_band = self._get_risk_band(p)
-            
+
             results.append(BatchItemResult(
                 applicant_id=i + 1,
                 default_probability=round(p, 4),

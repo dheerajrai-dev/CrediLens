@@ -17,10 +17,7 @@ joblib==1.6.0
 shap==0.53.0
 
 # Visualization & Plotting
-matplotlib==3.11.2
-seaborn==0.13.2
 altair==6.3.0
 
 # Utilities & Networking
 requests==2.34.2
-python-dateutil==2.9.0.post0

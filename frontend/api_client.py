@@ -1,5 +1,8 @@
 import logging
+import socket
+import time
 from typing import Dict, Any, Optional
+from urllib.parse import urlparse
 import requests
 import pandas as pd
 
@@ -12,7 +15,12 @@ logger = logging.getLogger("credilens.api_client")
 class ApiClient:
     def __init__(self, base_url: Optional[str] = None):
         self.base_url = base_url or f"http://{API_HOST}:{API_PORT}"
+        parsed = urlparse(self.base_url)
+        self.host = parsed.hostname or API_HOST
+        self.port = parsed.port or API_PORT
         self._direct_service = None
+        self._api_reachable_cache: Optional[bool] = None
+        self._last_checked_time: float = 0.0
 
     def _get_direct_service(self) -> ModelService:
         if self._direct_service is None:
@@ -20,11 +28,26 @@ class ApiClient:
         return self._direct_service
 
     def is_api_reachable(self) -> bool:
+        now = time.time()
+        if self._api_reachable_cache is not None and (now - self._last_checked_time) < 2.0:
+            return self._api_reachable_cache
+
+        reachable = False
         try:
-            resp = requests.get(f"{self.base_url}/health", timeout=1.5)
-            return resp.status_code == 200
+            # Fast TCP probe to avoid HTTP socket timeout hangs when server is offline
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(0.2)
+            result = sock.connect_ex((self.host, self.port))
+            sock.close()
+            if result == 0:
+                resp = requests.get(f"{self.base_url}/health", timeout=1.0)
+                reachable = (resp.status_code == 200)
         except Exception:
-            return False
+            reachable = False
+
+        self._api_reachable_cache = reachable
+        self._last_checked_time = now
+        return reachable
 
     def get_health(self) -> Dict[str, Any]:
         if self.is_api_reachable():

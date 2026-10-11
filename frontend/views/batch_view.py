@@ -83,6 +83,10 @@ def render_batch_view(client):
             avg_risk = batch_response["average_risk"]
             results = batch_response["results"]
 
+            if len(df_input) == 0 or len(results) == 0:
+                st.warning("Uploaded CSV contains no data rows to score.")
+                return
+
             st.markdown("---")
             st.markdown("### Portfolio Scoring Summary")
 
@@ -178,3 +182,23 @@ def render_batch_view(client):
 
         except Exception as e:
             st.error(f"Error processing CSV: {str(e)}")
+    else:
+        st.markdown("---")
+        st.markdown(
+            """
+            <div class="glass-container" style="text-align: center; padding: 42px 24px;">
+                <div style="font-size: 2.5rem; margin-bottom: 12px;">📁</div>
+                <h4 style="color: #f8fafc; margin-bottom: 8px;">Upload an Applicant Portfolio to Score</h4>
+                <p style="color: #94a3b8; max-width: 620px; margin: 0 auto 20px auto; font-size: 0.95rem; line-height: 1.5;">
+                    Upload a CSV file containing applicant and loan attributes to evaluate credit risk in bulk.
+                    Each row will be scored through the calibrated XGBoost model, assigned an empirical default probability,
+                    and categorized into an underwriting risk tier.
+                </p>
+                <div style="background: rgba(15, 23, 42, 0.4); border-radius: 8px; padding: 14px; max-width: 650px; margin: 0 auto 16px auto; text-align: left; font-size: 0.83rem; color: #94a3b8;">
+                    <strong style="color: #60a5fa;">Required CSV Columns:</strong><br>
+                    <code>person_age</code>, <code>person_income</code>, <code>person_home_ownership</code>, <code>person_emp_length</code>, <code>loan_intent</code>, <code>loan_grade</code>, <code>loan_amnt</code>, <code>loan_int_rate</code>, <code>loan_percent_income</code>, <code>cb_person_default_on_file</code>, <code>cb_person_cred_hist_length</code>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )

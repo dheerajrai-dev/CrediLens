@@ -7,6 +7,7 @@ __pycache__/
 htmlcov/
 .env
 credit_risk_dataset.csv
-nb_cells_out.txt
 *.joblib
 docs/
+tests/
+

@@ -159,6 +159,7 @@ def render_prediction_view(client):
             with st.spinner("Executing 4-model inference and calculating local SHAP attributions..."):
                 pred_result = client.predict(applicant_payload)
                 st.session_state["last_prediction"] = pred_result
+                st.session_state["applicant_form"] = applicant_payload.copy()
         else:
             pred_result = st.session_state["last_prediction"]
 
@@ -340,3 +341,30 @@ def render_prediction_view(client):
                         )
                 else:
                     st.info("No significant risk-mitigating factors present.")
+    else:
+        st.markdown("---")
+        st.markdown(
+            """
+            <div class="glass-container" style="text-align: center; padding: 42px 24px;">
+                <div style="font-size: 2.5rem; margin-bottom: 12px;">🎯</div>
+                <h4 style="color: #f8fafc; margin-bottom: 8px;">Awaiting Applicant Evaluation</h4>
+                <p style="color: #94a3b8; max-width: 580px; margin: 0 auto 20px auto; font-size: 0.95rem; line-height: 1.5;">
+                    Select one of the sample borrower presets above or customize the applicant characteristics,
+                    then click <strong>Generate Prediction</strong> to run 4-model inference, observe side-by-side risk scores,
+                    and inspect local SHAP factor attributions.
+                </p>
+                <div style="display: inline-flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                    <span class="badge" style="background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">
+                        ⚡ 4-Model Inference
+                    </span>
+                    <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">
+                        ⚖️ Sigmoid Calibrated Probabilities
+                    </span>
+                    <span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3);">
+                        🔍 Local TreeSHAP Explanations
+                    </span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
