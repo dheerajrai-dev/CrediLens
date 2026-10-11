@@ -1,0 +1,5 @@
+docs/
+.venv/
+
+model/
+credit_risk_dataset.csv
