@@ -1,5 +1,12 @@
-docs/
 .venv/
-
-model/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+.env
 credit_risk_dataset.csv
+nb_cells_out.txt
+docs/
+artifacts/

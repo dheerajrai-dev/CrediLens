@@ -1,0 +1,26 @@
+# CrediLens Production Runtime Dependencies
+
+
+# Web Frameworks & Server
+fastapi==0.143.0
+uvicorn==0.54.0
+pydantic==2.14.0
+python-multipart==0.0.32
+streamlit==1.65.0
+
+# Machine Learning & Data Processing
+scikit-learn==1.9.1
+xgboost==3.4.1
+pandas==3.0.6
+numpy==2.5.3
+joblib==1.6.0
+shap==0.53.0
+
+# Visualization & Plotting
+matplotlib==3.11.2
+seaborn==0.13.2
+altair==6.3.0
+
+# Utilities & Networking
+requests==2.34.2
+python-dateutil==2.9.0.post0
