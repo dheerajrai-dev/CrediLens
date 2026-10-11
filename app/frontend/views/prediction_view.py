@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import altair as alt
 
-from frontend.styles import get_risk_badge
+from app.frontend.styles import get_risk_badge
 
 PRESETS = {
     "Prime Low-Risk Borrower": {

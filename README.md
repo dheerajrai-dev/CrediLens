@@ -129,37 +129,44 @@ Open your browser at `http://localhost:8501`.
 
 ## 5. Directory Structure
 
-```
+```text
 Credlen/
-├── app.py                      # Streamlit application entrypoint
-├── main.py                     # FastAPI application entrypoint
-├── requirements.txt            # Runtime dependencies (excludes Jupyter)
-├── credit_risk_dataset.csv     # Source credit risk dataset
-├── model/                      # Trained model directory
-│   ├── Credit_risk_model.pkl   # Calibrated XGBoost pipeline
-│   └── best_threshold.pkl      # Optimal decision threshold (0.7431)
-├── backend/                    # FastAPI backend layer
-│   ├── __init__.py
-│   └── app/
-│       ├── api.py              # REST API endpoints
-│       ├── config.py           # Paths and server configs
-│       ├── model_service.py    # Inference, 4 models, SHAP engine
-│       └── schemas.py          # Pydantic request/response schemas
-├── frontend/                   # Streamlit demonstration layer
-│   ├── app.py                  # Main Streamlit layout & navigation
-│   ├── styles.py               # Glassmorphism CSS design system
-│   ├── api_client.py           # HTTP client with in-process fallback
-│   └── views/
-│       ├── prediction_view.py  # 1. Single risk prediction & 4-model comparison
-│       ├── evaluation_view.py  # 2. Comprehensive benchmark evaluation & curves
-│       ├── explainability_view.py # 3. TreeSHAP global & local attribution
-│       └── batch_view.py       # 4. Final-model batch CSV scoring utility
-├── tests/                      # Automated test suite
-│   ├── test_api.py             # FastAPI endpoint tests
-│   ├── test_backend.py         # ModelService unit tests
-│   └── test_frontend.py        # ApiClient & workflow tests
-└── docs/                       # Project documentation & specifications
-    ├── CrediLens_PRD.md
-    ├── CrediLens_Frontend_Specification.md
-    └── CrediLens_System_Architecture.md
+├── app/
+│   ├── api/
+│   │   ├── main.py                 # FastAPI application & CORS
+│   │   ├── lifespan.py             # Model lifecycle manager (startup/shutdown)
+│   │   ├── dependencies.py         # Request state dependency injection
+│   │   └── routes/
+│   │       └── prediction.py       # Prediction, evaluation & explainability routes
+│   ├── frontend/
+│   │   ├── streamlit_app.py        # Streamlit layout & navigation
+│   │   ├── api_client.py           # HTTP client with in-process fallback
+│   │   ├── styles.py               # Glassmorphism CSS design system
+│   │   └── views/
+│   │       ├── prediction_view.py  # 1. Single risk prediction & 4-model comparison
+│   │       ├── evaluation_view.py  # 2. Comprehensive benchmark evaluation & curves
+│   │       ├── explainability_view.py # 3. TreeSHAP global & local attribution
+│   │       └── batch_view.py       # 4. Final-model batch CSV scoring utility
+│   ├── services/
+│   │   └── prediction_service.py   # Prediction & explainability engine
+│   ├── schemas/
+│   │   └── credit.py               # Pydantic request/response schemas
+│   └── core/
+│       ├── config.py               # Dynamic path resolution & configs
+│       └── exceptions.py           # Domain-specific custom exceptions
+├── models/                         # Serialized ML artifacts
+│   ├── Credit_risk_model.pkl       # Calibrated XGBoost pipeline
+│   ├── best_threshold.pkl          # Optimal decision threshold (0.7431)
+│   └── baselines.joblib            # Pre-cached baseline models (LR, DT, RF)
+├── tests/                          # Automated test suite
+│   ├── test_api.py                 # FastAPI endpoint & lifespan tests
+│   ├── test_services.py            # PredictionService unit tests
+│   └── test_frontend.py            # ApiClient & workflow tests
+├── docs/                           # Project documentation & specifications
+├── requirements.txt                # Production runtime dependencies (no Jupyter)
+├── .env.example                    # Environment configuration template
+├── .gitignore                      # Git exclusion rules
+├── README.md                       # Complete documentation
+├── main.py                         # Root entrypoint forwarding to app/api/main.py
+└── app.py                          # Root entrypoint forwarding to app/frontend/streamlit_app.py
 ```

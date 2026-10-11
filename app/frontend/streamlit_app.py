@@ -8,12 +8,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-from frontend.styles import GLASS_CSS
-from frontend.api_client import ApiClient
-from frontend.views.prediction_view import render_prediction_view
-from frontend.views.evaluation_view import render_evaluation_view
-from frontend.views.explainability_view import render_explainability_view
-from frontend.views.batch_view import render_batch_view
+from app.frontend.styles import GLASS_CSS
+from app.frontend.api_client import ApiClient
+from app.frontend.views.prediction_view import render_prediction_view
+from app.frontend.views.evaluation_view import render_evaluation_view
+from app.frontend.views.explainability_view import render_explainability_view
+from app.frontend.views.batch_view import render_batch_view
 
 # Inject Glassmorphism design styling
 st.markdown(GLASS_CSS, unsafe_allow_html=True)

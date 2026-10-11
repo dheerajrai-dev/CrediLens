@@ -3,7 +3,7 @@ import pandas as pd
 import io
 import altair as alt
 
-from frontend.styles import get_risk_badge
+from app.frontend.styles import get_risk_badge
 
 SAMPLE_CSV_DATA = """person_age,person_income,person_home_ownership,person_emp_length,loan_intent,loan_grade,loan_amnt,loan_int_rate,loan_percent_income,cb_person_default_on_file,cb_person_cred_hist_length
 22,59000,RENT,12.0,PERSONAL,D,35000,16.02,0.59,Y,3

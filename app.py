@@ -11,4 +11,4 @@ if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
 
 # Execute frontend app
-from frontend.app import *
+import app.frontend.streamlit_app

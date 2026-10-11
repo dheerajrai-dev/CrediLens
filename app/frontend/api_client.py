@@ -6,9 +6,9 @@ from urllib.parse import urlparse
 import requests
 import pandas as pd
 
-from backend.app.config import API_HOST, API_PORT
-from backend.app.schemas import ApplicantInput
-from backend.app.model_service import ModelService
+from app.core.config import API_HOST, API_PORT
+from app.schemas.credit import ApplicantInput
+from app.services.prediction_service import PredictionService
 
 logger = logging.getLogger("credilens.api_client")
 
@@ -22,9 +22,9 @@ class ApiClient:
         self._api_reachable_cache: Optional[bool] = None
         self._last_checked_time: float = 0.0
 
-    def _get_direct_service(self) -> ModelService:
+    def _get_direct_service(self) -> PredictionService:
         if self._direct_service is None:
-            self._direct_service = ModelService.get_instance()
+            self._direct_service = PredictionService.get_instance()
         return self._direct_service
 
     def is_api_reachable(self) -> bool:
@@ -57,14 +57,14 @@ class ApiClient:
                     return resp.json()
             except Exception as e:
                 logger.warning(f"API health request failed: {e}")
-        
+
         # In-process fallback
         srv = self._get_direct_service()
         return {
             "status": "healthy (in-process fallback)",
             "model_loaded": srv.is_loaded,
             "model_name": srv.metadata.get("model_name", "CrediLens Credit-Default Classifier"),
-            "threshold": srv.threshold
+            "threshold": srv.threshold,
         }
 
     def get_model_info(self) -> Dict[str, Any]:
@@ -76,7 +76,6 @@ class ApiClient:
             except Exception as e:
                 logger.warning(f"API model-info request failed: {e}")
 
-        # In-process fallback
         return self._get_direct_service().get_model_info().model_dump()
 
     def predict(self, applicant_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -89,7 +88,6 @@ class ApiClient:
             except Exception as e:
                 logger.warning(f"API predict request failed: {e}")
 
-        # In-process fallback
         return self._get_direct_service().predict_single(applicant_obj).model_dump()
 
     def predict_batch(self, df: pd.DataFrame) -> Dict[str, Any]:
@@ -103,7 +101,6 @@ class ApiClient:
             except Exception as e:
                 logger.warning(f"API batch-predict request failed: {e}")
 
-        # In-process fallback
         return self._get_direct_service().predict_batch(df).model_dump()
 
     def get_evaluation(self) -> Dict[str, Any]:
@@ -115,7 +112,6 @@ class ApiClient:
             except Exception as e:
                 logger.warning(f"API evaluation request failed: {e}")
 
-        # In-process fallback
         return self._get_direct_service().get_evaluation_data().model_dump()
 
     def get_explainability(self) -> Dict[str, Any]:
@@ -127,5 +123,4 @@ class ApiClient:
             except Exception as e:
                 logger.warning(f"API explainability request failed: {e}")
 
-        # In-process fallback
         return self._get_direct_service().get_explainability_data().model_dump()

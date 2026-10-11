@@ -11,13 +11,19 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 
-from backend.app.config import (
+from app.core.config import (
     FINAL_MODEL_PATH,
     BEST_THRESHOLD_PATH,
+    BASELINES_PATH,
     DATA_PATH,
-    MODEL_DIR
+    MODEL_DIR,
 )
-from backend.app.schemas import (
+from app.core.exceptions import (
+    ModelNotLoadedError,
+    PredictionError,
+    InvalidApplicantDataError,
+)
+from app.schemas.credit import (
     ApplicantInput,
     FactorContribution,
     FinalModelResult,
@@ -29,11 +35,10 @@ from backend.app.schemas import (
     EvaluationMetrics,
     ConfusionMatrixData,
     ExplainabilityResponse,
-    GlobalFeatureImportance
+    GlobalFeatureImportance,
 )
 
-logger = logging.getLogger("credilens.model_service")
-logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("credilens.prediction_service")
 
 FEATURE_FRIENDLY_NAMES = {
     "person_age": "Age",
@@ -46,24 +51,10 @@ FEATURE_FRIENDLY_NAMES = {
     "loan_int_rate": "Interest Rate",
     "loan_percent_income": "Loan-to-Income Ratio",
     "cb_person_default_on_file": "Historical Default",
-    "cb_person_cred_hist_length": "Credit History Length"
+    "cb_person_cred_hist_length": "Credit History Length",
 }
 
-FEATURE_DESCRIPTIONS = {
-    "person_age": "Applicant's age in years",
-    "person_income": "Total annual income reported",
-    "person_home_ownership": "Housing status (Rent, Mortgage, Own)",
-    "person_emp_length": "Years employed in current profession",
-    "loan_intent": "Intended purpose of the requested loan",
-    "loan_grade": "Risk tier grade assigned (A to G)",
-    "loan_amnt": "Principal loan sum requested",
-    "loan_int_rate": "Annual percentage interest rate",
-    "loan_percent_income": "Proportion of annual income represented by the loan",
-    "cb_person_default_on_file": "Prior default recorded on credit bureau file",
-    "cb_person_cred_hist_length": "Length of established credit history in years"
-}
-
-class ModelService:
+class PredictionService:
     _instance = None
     _lock = threading.Lock()
 
@@ -72,37 +63,52 @@ class ModelService:
         self.preprocessor = None
         self.xgb_classifier = None
         self.explainer = None
-        self.threshold = 0.7431
-        self.metrics = {}
-        self.metadata = {}
-        self.feature_names_out = []
-        
+        self.threshold: float = 0.7431
+        self.metrics: Dict[str, Any] = {}
+        self.metadata: Dict[str, Any] = {}
+        self.feature_names_out: List[str] = []
+
         # Baselines
         self.logistic_model = None
         self.decision_tree_model = None
         self.random_forest_model = None
-        self.is_loaded = False
-        
+        self.is_loaded: bool = False
+
         self.load_all()
 
     @classmethod
-    def get_instance(cls) -> "ModelService":
+    def get_instance(cls) -> "PredictionService":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = cls()
         return cls._instance
 
-    def load_all(self):
-        logger.info("Initializing CrediLens ModelService...")
+    def ensure_loaded(self) -> None:
+        if not self.is_loaded or self.final_model is None:
+            self.load_all()
+
+    def cleanup(self) -> None:
+        """Gracefully release references upon application shutdown."""
+        logger.info("Cleaning up PredictionService resources...")
+        self.final_model = None
+        self.preprocessor = None
+        self.xgb_classifier = None
+        self.explainer = None
+        self.logistic_model = None
+        self.decision_tree_model = None
+        self.random_forest_model = None
+        self.is_loaded = False
+
+    def load_all(self) -> None:
+        logger.info("Initializing CrediLens PredictionService...")
         self._load_artifacts()
         self._init_shap_explainer()
         self._init_baseline_models()
         self.is_loaded = True
-        logger.info("CrediLens ModelService successfully initialized.")
+        logger.info("CrediLens PredictionService successfully initialized.")
 
-    def _load_artifacts(self):
-        # 1. Self-contained metadata
+    def _load_artifacts(self) -> None:
         self.metadata = {
             "model_name": "CrediLens Credit-Default Classifier",
             "model_type": "XGBClassifier (tuned) + Sigmoid Calibration",
@@ -115,11 +121,10 @@ class ModelService:
                 "scikit-learn": "1.9.1",
                 "xgboost": "3.4.1",
                 "pandas": "3.0.6",
-                "numpy": "2.5.3"
-            }
+                "numpy": "2.5.3",
+            },
         }
 
-        # 2. Self-contained official metrics
         self.metrics = {
             "roc_auc": 0.9352,
             "pr_auc": 0.8802,
@@ -127,10 +132,10 @@ class ModelService:
             "precision": 0.9683,
             "recall": 0.6946,
             "f1": 0.8089,
-            "threshold": 0.7431
+            "threshold": 0.7431,
         }
 
-        # 3. Load threshold
+        # Load threshold
         if BEST_THRESHOLD_PATH.exists():
             try:
                 self.threshold = float(joblib.load(BEST_THRESHOLD_PATH))
@@ -141,12 +146,11 @@ class ModelService:
         else:
             self.threshold = 0.7431
 
-        # 4. Load final model
+        # Load final model
         if FINAL_MODEL_PATH.exists():
             logger.info(f"Loading final model from {FINAL_MODEL_PATH}...")
             self.final_model = joblib.load(FINAL_MODEL_PATH)
-            
-            # Extract underlying pipeline & components
+
             if hasattr(self.final_model, "estimator"):
                 base_pipe = self.final_model.estimator
             elif hasattr(self.final_model, "calibrated_classifiers_"):
@@ -162,19 +166,19 @@ class ModelService:
         else:
             raise FileNotFoundError(f"Final model artifact not found at {FINAL_MODEL_PATH}")
 
-    def _init_shap_explainer(self):
+    def _init_shap_explainer(self) -> None:
         if self.xgb_classifier is not None:
             try:
                 import shap
                 logger.info("Initializing SHAP TreeExplainer for XGBoost classifier...")
                 self.explainer = shap.TreeExplainer(self.xgb_classifier)
             except Exception as e:
-                logger.warning(f"Failed to initialize SHAP TreeExplainer: {e}. Fallback to feature weights.")
+                logger.warning(f"Failed to initialize SHAP TreeExplainer: {e}. Fallback to heuristic factors.")
                 self.explainer = None
 
-    def _init_baseline_models(self):
-        """Initializes or loads the 3 comparison baseline models (Logistic Regression, Decision Tree, Random Forest)."""
-        baselines_cache = MODEL_DIR / "baselines.joblib"
+    def _init_baseline_models(self) -> None:
+        """Initializes or loads the 3 comparison baseline models."""
+        baselines_cache = BASELINES_PATH
         if baselines_cache.exists():
             try:
                 cached = joblib.load(baselines_cache)
@@ -193,45 +197,38 @@ class ModelService:
         try:
             logger.info("Fitting baseline comparison models on credit_risk_dataset.csv...")
             df = pd.read_csv(DATA_PATH)
-            
-            # Feature columns matching training
+
             features = [
                 "person_age", "person_income", "person_home_ownership", "person_emp_length",
                 "loan_intent", "loan_grade", "loan_amnt", "loan_int_rate",
                 "loan_percent_income", "cb_person_default_on_file", "cb_person_cred_hist_length"
             ]
-            
-            # Clean outliers or missing consistent with pipeline
+
             df_clean = df.copy()
             df_clean = df_clean[df_clean["person_age"] <= 100]
             df_clean = df_clean[df_clean["person_emp_length"] <= 60]
-            
+
             X = df_clean[features]
             y = df_clean["loan_status"]
 
-            # Transform with existing fitted preprocessor
             X_trans = self.preprocessor.transform(X)
 
-            # Fit Logistic Regression
             lr = LogisticRegression(class_weight="balanced", max_iter=500, random_state=42)
             lr.fit(X_trans, y)
             self.logistic_model = lr
 
-            # Fit Decision Tree
             dt = DecisionTreeClassifier(max_depth=6, random_state=42)
             dt.fit(X_trans, y)
             self.decision_tree_model = dt
 
-            # Fit Random Forest (100 estimators for fast inference)
             rf = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42, n_jobs=-1)
             rf.fit(X_trans, y)
             self.random_forest_model = rf
 
-            # Save cache
             joblib.dump({
                 "logistic": self.logistic_model,
                 "dt": self.decision_tree_model,
-                "rf": self.random_forest_model
+                "rf": self.random_forest_model,
             }, baselines_cache)
             logger.info("Baseline comparison models successfully fitted and cached.")
         except Exception as e:
@@ -262,51 +259,60 @@ class ModelService:
             return "Critical"
 
     def predict_single(self, applicant: ApplicantInput) -> PredictionResponse:
-        df = self._prepare_df(applicant)
-        
-        # 1. Final Model Prediction (Calibrated XGBoost)
-        xgb_proba = float(self.final_model.predict_proba(df)[0, 1])
-        prediction = 1 if xgb_proba >= self.threshold else 0
-        decision = "Default" if prediction == 1 else "Repaid"
-        risk_band = self._get_risk_band(xgb_proba)
+        self.ensure_loaded()
+        if self.final_model is None:
+            raise ModelNotLoadedError("Final model is not loaded.")
 
-        # 2. Run the 3 baseline models
-        X_trans = self.preprocessor.transform(df)
-        
-        lr_proba = float(self.logistic_model.predict_proba(X_trans)[0, 1]) if self.logistic_model else 0.214
-        dt_proba = float(self.decision_tree_model.predict_proba(X_trans)[0, 1]) if self.decision_tree_model else 0.278
-        rf_proba = float(self.random_forest_model.predict_proba(X_trans)[0, 1]) if self.random_forest_model else 0.197
+        try:
+            df = self._prepare_df(applicant)
 
-        predictions = {
-            "logistic_regression": round(lr_proba, 4),
-            "decision_tree": round(dt_proba, 4),
-            "random_forest": round(rf_proba, 4),
-            "xgboost": round(xgb_proba, 4)
-        }
+            # 1. Final Model Prediction (Calibrated XGBoost)
+            xgb_proba = float(self.final_model.predict_proba(df)[0, 1])
+            prediction = 1 if xgb_proba >= self.threshold else 0
+            decision = "Default" if prediction == 1 else "Repaid"
+            risk_band = self._get_risk_band(xgb_proba)
 
-        # 3. Compute Local SHAP Explanation for applicant
-        top_factors = self._compute_local_factors(df, X_trans)
+            # 2. Run the 3 baseline models
+            X_trans = self.preprocessor.transform(df)
 
-        return PredictionResponse(
-            predictions=predictions,
-            final_model=FinalModelResult(
-                name="Calibrated XGBoost (Sigmoid)",
-                probability=round(xgb_proba, 4),
-                threshold=round(self.threshold, 4),
-                prediction=prediction,
-                decision=decision,
-                risk_band=risk_band
-            ),
-            top_factors=top_factors,
-            applicant_data=df.iloc[0].to_dict()
-        )
+            lr_proba = float(self.logistic_model.predict_proba(X_trans)[0, 1]) if self.logistic_model else 0.214
+            dt_proba = float(self.decision_tree_model.predict_proba(X_trans)[0, 1]) if self.decision_tree_model else 0.278
+            rf_proba = float(self.random_forest_model.predict_proba(X_trans)[0, 1]) if self.random_forest_model else 0.197
+
+            predictions = {
+                "logistic_regression": round(lr_proba, 4),
+                "decision_tree": round(dt_proba, 4),
+                "random_forest": round(rf_proba, 4),
+                "xgboost": round(xgb_proba, 4),
+            }
+
+            # 3. Compute Local SHAP Explanation for applicant
+            top_factors = self._compute_local_factors(df, X_trans)
+
+            return PredictionResponse(
+                predictions=predictions,
+                final_model=FinalModelResult(
+                    name="Calibrated XGBoost (Sigmoid)",
+                    probability=round(xgb_proba, 4),
+                    threshold=round(self.threshold, 4),
+                    prediction=prediction,
+                    decision=decision,
+                    risk_band=risk_band,
+                ),
+                top_factors=top_factors,
+                applicant_data=df.iloc[0].to_dict(),
+            )
+        except Exception as e:
+            if isinstance(e, CrediLensError):
+                raise
+            raise PredictionError(f"Prediction failed: {str(e)}") from e
 
     def _compute_local_factors(self, df: pd.DataFrame, X_trans: np.ndarray) -> List[FactorContribution]:
         factors = []
         try:
             if self.explainer is not None:
                 shap_vals = self.explainer.shap_values(X_trans)[0]
-                
+
                 # Aggregate encoded one-hot columns back to original feature groups
                 feature_contribs = {}
                 for idx, fname in enumerate(self.feature_names_out):
@@ -317,7 +323,7 @@ class ModelService:
                             break
                     val = shap_vals[idx]
                     feature_contribs[orig_col] = feature_contribs.get(orig_col, 0.0) + float(val)
-                
+
                 # Sort by absolute impact
                 sorted_factors = sorted(feature_contribs.items(), key=lambda x: abs(x[1]), reverse=True)
                 for fcol, contrib in sorted_factors[:6]:
@@ -331,7 +337,7 @@ class ModelService:
                         value=raw_val,
                         contribution=round(contrib, 4),
                         direction=direction,
-                        description=desc
+                        description=desc,
                     ))
                 return factors
         except Exception as e:
@@ -350,7 +356,7 @@ class ModelService:
             value=f"{lpi*100:.1f}%",
             contribution=0.35 if lpi > 0.25 else -0.20,
             direction="increases_risk" if lpi > 0.25 else "decreases_risk",
-            description="High loan-to-income significantly increases default probability." if lpi > 0.25 else "Comfortable debt-to-income buffer reduces risk."
+            description="High loan-to-income significantly increases default probability." if lpi > 0.25 else "Comfortable debt-to-income buffer reduces risk.",
         ))
         factors.append(FactorContribution(
             feature="loan_grade",
@@ -358,7 +364,7 @@ class ModelService:
             value=grade,
             contribution=0.40 if grade in ['D', 'E', 'F', 'G'] else -0.25,
             direction="increases_risk" if grade in ['D', 'E', 'F', 'G'] else "decreases_risk",
-            description=f"Assigned risk tier Grade {grade} carries elevated default rate." if grade in ['D', 'E', 'F', 'G'] else f"Prime credit grade {grade} favors repayment."
+            description=f"Assigned risk tier Grade {grade} carries elevated default rate." if grade in ['D', 'E', 'F', 'G'] else f"Prime credit grade {grade} favors repayment.",
         ))
         factors.append(FactorContribution(
             feature="loan_int_rate",
@@ -366,7 +372,7 @@ class ModelService:
             value=f"{rate}%",
             contribution=0.25 if rate > 12.0 else -0.15,
             direction="increases_risk" if rate > 12.0 else "decreases_risk",
-            description=f"Interest rate {rate}% reflects risk premium."
+            description=f"Interest rate {rate}% reflects risk premium.",
         ))
         factors.append(FactorContribution(
             feature="person_home_ownership",
@@ -374,12 +380,16 @@ class ModelService:
             value=home,
             contribution=0.18 if home == "RENT" else -0.15,
             direction="increases_risk" if home == "RENT" else "decreases_risk",
-            description="Renters historically exhibit higher variance in default risk." if home == "RENT" else "Home ownership provides asset stability."
+            description="Renters historically exhibit higher variance in default risk." if home == "RENT" else "Home ownership provides asset stability.",
         ))
         return factors
 
     def predict_batch(self, df_input: pd.DataFrame) -> BatchPredictionResponse:
-        """Runs batch prediction using ONLY the final selected model (Calibrated XGBoost)."""
+        """Runs batch prediction using exclusively the final calibrated model."""
+        self.ensure_loaded()
+        if self.final_model is None:
+            raise ModelNotLoadedError("Final model is not loaded.")
+
         if df_input is None or len(df_input) == 0:
             return BatchPredictionResponse(
                 total_records=0,
@@ -387,11 +397,10 @@ class ModelService:
                 predicted_repays=0,
                 default_rate=0.0,
                 average_risk=0.0,
-                results=[]
+                results=[],
             )
 
         df = df_input.copy()
-        # Normalize column names: strip whitespace and convert to lowercase
         df.columns = [str(c).strip().lower() for c in df.columns]
 
         required_cols = [
@@ -400,20 +409,18 @@ class ModelService:
             "loan_percent_income", "cb_person_default_on_file", "cb_person_cred_hist_length"
         ]
 
-        # Calculate loan_percent_income if missing
         if "loan_percent_income" not in df.columns:
             if "loan_amnt" in df.columns and "person_income" in df.columns:
                 incomes = pd.to_numeric(df["person_income"], errors="coerce").fillna(1.0).replace(0, 1.0)
                 amounts = pd.to_numeric(df["loan_amnt"], errors="coerce").fillna(0.0)
                 df["loan_percent_income"] = (amounts / incomes).round(2).clip(0.0, 1.5)
             else:
-                raise ValueError("Missing required column in CSV: loan_percent_income")
+                raise InvalidApplicantDataError("Missing required column in CSV: loan_percent_income")
 
         for col in required_cols:
             if col not in df.columns:
-                raise ValueError(f"Missing required column in CSV: {col}")
+                raise InvalidApplicantDataError(f"Missing required column in CSV: {col}")
 
-        # Ensure correct types for numeric columns
         num_cols = [
             "person_age", "person_income", "person_emp_length",
             "loan_amnt", "loan_int_rate", "loan_percent_income", "cb_person_cred_hist_length"
@@ -421,7 +428,6 @@ class ModelService:
         for col in num_cols:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-        # Ensure categorical columns are clean strings
         cat_cols = ["person_home_ownership", "loan_intent", "loan_grade", "cb_person_default_on_file"]
         for col in cat_cols:
             df[col] = df[col].astype(str).str.strip().str.upper()
@@ -444,7 +450,7 @@ class ModelService:
                 default_probability=round(p, 4),
                 prediction=pred,
                 decision=decision,
-                risk_band=risk_band
+                risk_band=risk_band,
             ))
 
         total = len(results)
@@ -459,10 +465,11 @@ class ModelService:
             predicted_repays=repays,
             default_rate=default_rate,
             average_risk=avg_risk,
-            results=results
+            results=results,
         )
 
     def get_model_info(self) -> ModelInfoResponse:
+        self.ensure_loaded()
         return ModelInfoResponse(
             model_name=self.metadata.get("model_name", "CrediLens Credit-Default Classifier"),
             model_type=self.metadata.get("model_type", "XGBClassifier (tuned) + Sigmoid Calibration"),
@@ -485,13 +492,12 @@ class ModelService:
                 "scikit-learn": "1.9.1",
                 "xgboost": "3.4.1",
                 "pandas": "3.0.6",
-                "numpy": "2.5.3"
+                "numpy": "2.5.3",
             }),
-            metrics={k: round(float(v), 4) for k, v in self.metrics.items()}
+            metrics={k: round(float(v), 4) for k, v in self.metrics.items()},
         )
 
     def get_evaluation_data(self) -> EvaluationResponse:
-        """Returns 4-model experimental results, curve coordinates, confusion matrices, and selection rationale."""
         table = [
             EvaluationMetrics(
                 model="Logistic Regression",
@@ -501,7 +507,7 @@ class ModelService:
                 recall=0.7781,
                 f1_score=0.6408,
                 accuracy=0.8116,
-                brier_score=0.1380
+                brier_score=0.1380,
             ),
             EvaluationMetrics(
                 model="Decision Tree",
@@ -511,7 +517,7 @@ class ModelService:
                 recall=0.7624,
                 f1_score=0.7440,
                 accuracy=0.8867,
-                brier_score=0.1133
+                brier_score=0.1133,
             ),
             EvaluationMetrics(
                 model="Random Forest",
@@ -521,7 +527,7 @@ class ModelService:
                 recall=0.7172,
                 f1_score=0.8230,
                 accuracy=0.9334,
-                brier_score=0.0682
+                brier_score=0.0682,
             ),
             EvaluationMetrics(
                 model="XGBoost (Tuned + Calibrated)",
@@ -531,11 +537,10 @@ class ModelService:
                 recall=0.6946,
                 f1_score=0.8089,
                 accuracy=0.9412,
-                brier_score=0.0661
-            )
+                brier_score=0.0661,
+            ),
         ]
 
-        # Authentic confusion matrix numbers on test set (6,305 applicants)
         cms = {
             "Logistic Regression": ConfusionMatrixData(
                 tn=4103, fp=840, fn=302, tp=1060, accuracy=0.8189, precision=0.5579, recall=0.7783, f1=0.6500
@@ -548,28 +553,27 @@ class ModelService:
             ),
             "XGBoost (Tuned + Calibrated)": ConfusionMatrixData(
                 tn=4912, fp=31, fn=348, tp=1014, accuracy=0.9399, precision=0.9703, recall=0.7445, f1=0.8425
-            )
+            ),
         }
 
-        # Calibration & ROC/PR curve points
         curves = {
             "roc": {
                 "logistic_regression": {"fpr": [0.0, 0.05, 0.12, 0.25, 0.50, 1.0], "tpr": [0.0, 0.45, 0.70, 0.85, 0.94, 1.0]},
                 "decision_tree": {"fpr": [0.0, 0.08, 0.15, 0.30, 0.55, 1.0], "tpr": [0.0, 0.55, 0.76, 0.85, 0.92, 1.0]},
                 "random_forest": {"fpr": [0.0, 0.01, 0.04, 0.10, 0.25, 1.0], "tpr": [0.0, 0.60, 0.82, 0.92, 0.97, 1.0]},
-                "xgboost": {"fpr": [0.0, 0.006, 0.025, 0.08, 0.18, 1.0], "tpr": [0.0, 0.68, 0.88, 0.95, 0.99, 1.0]}
+                "xgboost": {"fpr": [0.0, 0.006, 0.025, 0.08, 0.18, 1.0], "tpr": [0.0, 0.68, 0.88, 0.95, 0.99, 1.0]},
             },
             "pr": {
                 "logistic_regression": {"recall": [0.0, 0.2, 0.5, 0.78, 1.0], "precision": [0.90, 0.75, 0.62, 0.55, 0.21]},
                 "decision_tree": {"recall": [0.0, 0.3, 0.6, 0.76, 1.0], "precision": [0.85, 0.78, 0.73, 0.72, 0.21]},
                 "random_forest": {"recall": [0.0, 0.3, 0.6, 0.72, 1.0], "precision": [0.99, 0.98, 0.96, 0.96, 0.21]},
-                "xgboost": {"recall": [0.0, 0.4, 0.7, 0.81, 1.0], "precision": [0.99, 0.98, 0.95, 0.82, 0.21]}
+                "xgboost": {"recall": [0.0, 0.4, 0.7, 0.81, 1.0], "precision": [0.99, 0.98, 0.95, 0.82, 0.21]},
             },
             "calibration": {
                 "perfect": {"pred": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0], "actual": [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]},
                 "uncalibrated": {"pred": [0.08, 0.18, 0.32, 0.52, 0.72, 0.91], "actual": [0.03, 0.12, 0.24, 0.49, 0.81, 0.98]},
-                "calibrated": {"pred": [0.05, 0.19, 0.38, 0.58, 0.79, 0.96], "actual": [0.05, 0.20, 0.39, 0.59, 0.78, 0.95]}
-            }
+                "calibrated": {"pred": [0.05, 0.19, 0.38, 0.58, 0.79, 0.96], "actual": [0.05, 0.20, 0.39, 0.59, 0.78, 0.95]},
+            },
         }
 
         rationale = (
@@ -584,7 +588,7 @@ class ModelService:
             curves=curves,
             confusion_matrices=cms,
             selected_model="XGBoost (Tuned + Calibrated)",
-            selection_rationale=rationale
+            selection_rationale=rationale,
         )
 
     def get_explainability_data(self) -> ExplainabilityResponse:
@@ -595,7 +599,7 @@ class ModelService:
                 importance=0.342,
                 mean_abs_shap=1.45,
                 trend="Positive (Higher ratio increases default likelihood)",
-                business_impact="Strongest single predictor of solvency distress."
+                business_impact="Strongest single predictor of solvency distress.",
             ),
             GlobalFeatureImportance(
                 feature="loan_int_rate",
@@ -603,7 +607,7 @@ class ModelService:
                 importance=0.215,
                 mean_abs_shap=0.98,
                 trend="Positive (High APR reflects borrower risk premium)",
-                business_impact="Monthly payment burden increases debt service risk."
+                business_impact="Monthly payment burden increases debt service risk.",
             ),
             GlobalFeatureImportance(
                 feature="person_income",
@@ -611,7 +615,7 @@ class ModelService:
                 importance=0.148,
                 mean_abs_shap=0.72,
                 trend="Negative (Higher income decreases default likelihood)",
-                business_impact="Provides cash flow buffer against unexpected expenses."
+                business_impact="Provides cash flow buffer against unexpected expenses.",
             ),
             GlobalFeatureImportance(
                 feature="loan_grade",
@@ -619,7 +623,7 @@ class ModelService:
                 importance=0.112,
                 mean_abs_shap=0.58,
                 trend="Ordinal (Grades D-G correlate with higher default)",
-                business_impact="Captures underlying credit bureau risk profile."
+                business_impact="Captures underlying credit bureau risk profile.",
             ),
             GlobalFeatureImportance(
                 feature="person_home_ownership",
@@ -627,7 +631,7 @@ class ModelService:
                 importance=0.086,
                 mean_abs_shap=0.41,
                 trend="Categorical (Renters have higher risk than Mortgage/Owners)",
-                business_impact="Home equity serves as financial safety net."
+                business_impact="Home equity serves as financial safety net.",
             ),
             GlobalFeatureImportance(
                 feature="cb_person_default_on_file",
@@ -635,7 +639,7 @@ class ModelService:
                 importance=0.054,
                 mean_abs_shap=0.28,
                 trend="Binary (Prior default significantly increases risk)",
-                business_impact="Demonstrated past non-performance history."
+                business_impact="Demonstrated past non-performance history.",
             ),
             GlobalFeatureImportance(
                 feature="person_emp_length",
@@ -643,8 +647,8 @@ class ModelService:
                 importance=0.043,
                 mean_abs_shap=0.21,
                 trend="Negative (Longer tenure improves stability)",
-                business_impact="Steady earnings tenure reduces income volatility."
-            )
+                business_impact="Steady earnings tenure reduces income volatility.",
+            ),
         ]
 
         methodology = (
@@ -661,5 +665,8 @@ class ModelService:
             model_name="CrediLens Tuned XGBoost Classifier",
             global_importance=global_importance,
             methodology=methodology,
-            disclaimer=disclaimer
+            disclaimer=disclaimer,
         )
+
+# Backward-compatibility alias
+ModelService = PredictionService
