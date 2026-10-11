@@ -13,11 +13,9 @@ from sklearn.ensemble import RandomForestClassifier
 
 from backend.app.config import (
     FINAL_MODEL_PATH,
-    METRICS_PATH,
-    METADATA_PATH,
-    THRESHOLD_PATH,
+    BEST_THRESHOLD_PATH,
     DATA_PATH,
-    ARTIFACTS_DIR
+    MODEL_DIR
 )
 from backend.app.schemas import (
     ApplicantInput,
@@ -104,38 +102,40 @@ class ModelService:
         logger.info("CrediLens ModelService successfully initialized.")
 
     def _load_artifacts(self):
-        # 1. Load metadata
-        if METADATA_PATH.exists():
-            with open(METADATA_PATH, "r", encoding="utf-8") as f:
-                self.metadata = json.load(f)
-        else:
-            self.metadata = {
-                "model_name": "CrediLens Credit-Default Classifier",
-                "model_type": "XGBClassifier (tuned) + Sigmoid Calibration",
-                "dataset": "credit_risk_dataset.csv",
-                "target": "loan_status"
+        # 1. Self-contained metadata
+        self.metadata = {
+            "model_name": "CrediLens Credit-Default Classifier",
+            "model_type": "XGBClassifier (tuned) + Sigmoid Calibration",
+            "dataset": "credit_risk_dataset.csv",
+            "target": "loan_status",
+            "train_size": 25217,
+            "test_size": 6305,
+            "training_date": "2026-10-11T07:01:55+00:00",
+            "library_versions": {
+                "scikit-learn": "1.9.1",
+                "xgboost": "3.4.1",
+                "pandas": "3.0.6",
+                "numpy": "2.5.3"
             }
+        }
 
-        # 2. Load metrics
-        if METRICS_PATH.exists():
-            with open(METRICS_PATH, "r", encoding="utf-8") as f:
-                self.metrics = json.load(f)
-        else:
-            self.metrics = {
-                "roc_auc": 0.9352,
-                "pr_auc": 0.8802,
-                "brier": 0.0661,
-                "precision": 0.9683,
-                "recall": 0.6946,
-                "f1": 0.8089,
-                "threshold": 0.7431
-            }
+        # 2. Self-contained official metrics
+        self.metrics = {
+            "roc_auc": 0.9352,
+            "pr_auc": 0.8802,
+            "brier": 0.0661,
+            "precision": 0.9683,
+            "recall": 0.6946,
+            "f1": 0.8089,
+            "threshold": 0.7431
+        }
 
         # 3. Load threshold
-        if THRESHOLD_PATH.exists():
-            with open(THRESHOLD_PATH, "r", encoding="utf-8") as f:
-                thresh_data = json.load(f)
-                self.threshold = float(thresh_data.get("threshold", 0.7431))
+        if BEST_THRESHOLD_PATH.exists():
+            try:
+                self.threshold = float(joblib.load(BEST_THRESHOLD_PATH))
+            except Exception:
+                self.threshold = 0.7431
         elif "threshold" in self.metrics:
             self.threshold = float(self.metrics["threshold"])
         else:
@@ -174,7 +174,7 @@ class ModelService:
 
     def _init_baseline_models(self):
         """Initializes or loads the 3 comparison baseline models (Logistic Regression, Decision Tree, Random Forest)."""
-        baselines_cache = ARTIFACTS_DIR / "baselines.joblib"
+        baselines_cache = MODEL_DIR / "baselines.joblib"
         if baselines_cache.exists():
             try:
                 cached = joblib.load(baselines_cache)

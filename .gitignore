@@ -8,5 +8,5 @@ htmlcov/
 .env
 credit_risk_dataset.csv
 nb_cells_out.txt
-artifacts/
+*.joblib
 docs/
