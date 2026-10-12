@@ -20,5 +20,6 @@ if __name__ == "__main__" and not streamlit.runtime.exists():
     print("    python main.py")
     sys.exit(0)
 
-# Execute frontend app
-import app.frontend.streamlit_app
+from app.frontend.streamlit_app import main
+
+main()

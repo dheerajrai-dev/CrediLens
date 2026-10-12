@@ -58,6 +58,10 @@ class TestFrontendIntegration(unittest.TestCase):
 
         ex = self.client.get_explainability()
         self.assertTrue(len(ex["global_importance"]) > 0)
+    def test_streamlit_app_entrypoint_callable(self):
+        import app.frontend.streamlit_app as st_app
+        self.assertTrue(hasattr(st_app, "main"))
+        self.assertTrue(callable(st_app.main))
 
 if __name__ == "__main__":
     unittest.main()

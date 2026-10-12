@@ -1,12 +1,12 @@
 # CrediLens — Explainable Credit Risk Prediction & Decision Support System
 
-CrediLens is an end-to-end Machine Learning decision support platform designed to estimate the probability of loan default on structured applicant data. The system features a production-ready **Streamlit** user interface, a **FastAPI** inference backend, and a tuned **XGBoost** model calibrated with Platt/Sigmoid scaling.
+CrediLens is an end-to-end Machine Learning decision support platform designed to estimate the probability of loan default on structured applicant data. The system features a production-ready **Streamlit** user interface, a **FastAPI** inference backend, and a tuned **XGBoost** model calibrated with Sigmoid scaling.
 
 ---
 
 ## 1. System Architecture
 
-The application is structured into a demonstration and serving architecture:
+The application is structured into a modular demonstration and serving architecture:
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -22,6 +22,7 @@ The application is structured into a demonstration and serving architecture:
 │                                                        │
 │  GET  /health              GET  /model-info            │
 │  POST /predict             POST /batch-predict         │
+│  POST /predict-batch (alias)                           │
 │  GET  /evaluation          GET  /explainability        │
 └───────────────────────────┬────────────────────────────┘
                             │
@@ -30,18 +31,18 @@ The application is structured into a demonstration and serving architecture:
 │                  ML Inference Service                  │
 │                                                        │
 │  - Preprocessing Pipeline (ColumnTransformer)          │
-│  - Final Model (Tuned Calibrated XGBoost)             │
+│  - Final Model (Tuned Calibrated XGBoost)              │
 │  - 3 Baseline Comparison Models (LR, DT, RF)           │
-│  - TreeSHAP Local & Global Explainer                  │
-│  - Threshold Decision Engine (cutoff: 0.7431)          │
+│  - TreeSHAP Local & Global Explainer                   │
+│  - Threshold Decision Engine (cutoff: 0.7632)          │
 └────────────────────────────────────────────────────────┘
 ```
 
-### Why FastAPI is Retained
-Following the specifications in `docs/CrediLens_System_Architecture.md` and `docs/CrediLens_Frontend_Specification.md`:
-1. **API Contracts**: Preserves clean service boundaries with standard RESTful contracts (`/predict`, `/batch-predict`, `/model-info`, `/evaluation`, `/explainability`).
+### Architecture Highlights
+1. **API Contracts**: RESTful service contracts (`/predict`, `/batch-predict`, `/predict-batch`, `/model-info`, `/evaluation`, `/explainability`, `/health`).
 2. **Decoupled Architecture**: Enables external systems (e.g., loan origination systems) to consume inferences independently of the frontend.
 3. **Resilient Dual Mode**: The Streamlit frontend connects over HTTP to FastAPI when online, and automatically provides in-process model execution if Streamlit is launched standalone.
+4. **Reactive Frontend**: The root entrypoint (`app.py`) delegates cleanly to `app.frontend.streamlit_app.main()`, ensuring complete state and component re-rendering across all user interactions and form submissions.
 
 ---
 
@@ -49,8 +50,8 @@ Following the specifications in `docs/CrediLens_System_Architecture.md` and `doc
 
 ### Section 1: Risk Prediction
 - **Input Form**: Captures 11 applicant and loan features with interactive presets (*Prime Low-Risk*, *Borderline Moderate*, *High-Risk Distressed*).
-- **Four-Model Observation**: Side-by-side comparison displaying default probabilities across **Logistic Regression**, **Decision Tree**, **Random Forest**, and the official **Calibrated XGBoost**.
-- **Decision Support**: Displays recommendation (*Approve* vs *Deny*), operating threshold cutoff (0.7431), and risk tier categorization (*Low*, *Moderate*, *High*, *Critical*).
+- **Four-Model Observation**: Side-by-side comparison displaying default probabilities across **Logistic Regression**, **Decision Tree**, **Random Forest**, and the champion **Calibrated XGBoost**.
+- **Decision Support**: Displays recommendation (*Approve* vs *Deny*), operating threshold cutoff (0.7632), and risk tier categorization (*Low*, *Moderate*, *High*, *Critical*).
 - **Local SHAP Breakdown**: Top feature attributions pushing risk up or pulling risk down.
 
 ### Section 2: Model Evaluation
@@ -59,17 +60,17 @@ Following the specifications in `docs/CrediLens_System_Architecture.md` and `doc
   - ROC Curves comparison for all 4 models.
   - Precision-Recall curves under class imbalance (~21.8% positive rate).
   - Calibration reliability curves (Uncalibrated vs Sigmoid Calibrated).
-- **Confusion Matrix Explorer**: Interactive dropdown allowing evaluators to inspect True/False positives and negatives across all 4 architectures on the 6,305 held-out test records.
+- **Confusion Matrix Explorer**: Interactive inspection of True/False positives and negatives across all 4 architectures on the held-out test set.
 - **Selection Rationale**: Explains why Tuned XGBoost with Sigmoid Calibration was chosen over Random Forest and linear baselines.
 
 ### Section 3: Explainability
 - **Global TreeSHAP Importance**: Ranked feature attributions across the portfolio.
 - **Underwriting Insights**: Plain-language credit impact explanations for underwriters.
-- **Interactive Simulator**: Dynamic what-if scenario simulator showing instant SHAP waterfall adjustments.
+- **Interactive Simulator**: Dynamic what-if scenario simulator showing instant SHAP adjustments.
 - **Attribution Notice**: Transparent disclaimer clarifying attribution vs causation.
 
 ### Section 4: Batch Prediction
-- **Final Model Exclusivity**: In accordance with the system specification, batch scoring runs **exclusively on the champion Calibrated XGBoost** model.
+- **Final Model Exclusivity**: Batch scoring runs exclusively on the champion Calibrated XGBoost model for production throughput.
 - **CSV Portfolio Upload**: File validator and downloadable 10-applicant sample template.
 - **Risk Stratification**: Portfolio default rate %, average risk, and tier distribution chart.
 - **Export**: One-click download of scored results CSV.
@@ -83,26 +84,23 @@ Following the specifications in `docs/CrediLens_System_Architecture.md` and `doc
 - A clean virtual environment is recommended
 
 ### Step 1: Install Dependencies
-A clean `requirements.txt` is provided, excluding all Jupyter and notebook-only packages:
-
 ```bash
 pip install -r requirements.txt
 ```
 
-### Step 2: Run Tests
-Verify the complete test suite (backend API, inference, SHAP, and frontend integration):
-
+### Step 2: Run Automated Tests
+Execute the complete 34-test regression and stress test suite:
 ```bash
-python -m unittest discover -s tests
+python -m unittest discover tests -v
 ```
 
 ### Step 3: Start the Backend (Optional for standalone, recommended for full stack)
 ```bash
 python main.py
 # Or with uvicorn:
-uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+uvicorn app.api.main:app --host 127.0.0.1 --port 8000 --reload
 ```
-Interactive API documentation is accessible at `http://127.0.0.1:8000/docs`.
+Interactive Swagger documentation is available at `http://127.0.0.1:8000/docs`.
 
 ### Step 4: Launch the Streamlit Frontend
 ```bash
@@ -118,7 +116,7 @@ Open your browser at `http://localhost:8501`.
 | :--- | :--- |
 | **Model Family** | XGBClassifier (tuned) + Sigmoid Calibration |
 | **Estimator Pipeline** | Median Imputer + OneHotEncoder (`handle_unknown='ignore'`) + XGBoost |
-| **Optimal Threshold** | `0.7431` (derived from training OOF PR-curve optimization) |
+| **Optimal Threshold** | `0.7632` (derived from PR-curve optimization) |
 | **ROC-AUC** | `0.9471` (held-out test set: `0.9352`) |
 | **PR-AUC** | `0.9043` (held-out test set: `0.8802`) |
 | **Precision** | `96.83%` on default class |
@@ -133,13 +131,13 @@ Open your browser at `http://localhost:8501`.
 Credlen/
 ├── app/
 │   ├── api/
-│   │   ├── main.py                 # FastAPI application & CORS
+│   │   ├── main.py                 # FastAPI application, CORS & root routes
 │   │   ├── lifespan.py             # Model lifecycle manager (startup/shutdown)
 │   │   ├── dependencies.py         # Request state dependency injection
 │   │   └── routes/
-│   │       └── prediction.py       # Prediction, evaluation & explainability routes
+│   │       └── prediction.py       # Prediction, evaluation & dual batch routes
 │   ├── frontend/
-│   │   ├── streamlit_app.py        # Streamlit layout & navigation
+│   │   ├── streamlit_app.py        # Streamlit layout, navigation & main() entrypoint
 │   │   ├── api_client.py           # HTTP client with in-process fallback
 │   │   ├── styles.py               # Glassmorphism CSS design system
 │   │   └── views/
@@ -156,17 +154,18 @@ Credlen/
 │       └── exceptions.py           # Domain-specific custom exceptions
 ├── models/                         # Serialized ML artifacts
 │   ├── Credit_risk_model.pkl       # Calibrated XGBoost pipeline
-│   ├── best_threshold.pkl          # Optimal decision threshold (0.7431)
+│   ├── best_threshold.pkl          # Optimal decision threshold (0.7632)
 │   └── baselines.joblib            # Pre-cached baseline models (LR, DT, RF)
-├── tests/                          # Automated test suite
+├── tests/                          # 34 automated regression & stress tests
 │   ├── test_api.py                 # FastAPI endpoint & lifespan tests
 │   ├── test_services.py            # PredictionService unit tests
-│   └── test_frontend.py            # ApiClient & workflow tests
-├── docs/                           # Project documentation & specifications
-├── requirements.txt                # Production runtime dependencies (no Jupyter)
+│   ├── test_frontend.py            # ApiClient & Streamlit entrypoint tests
+│   ├── test_m2_adversarial.py      # Boundary values & malformed payload tests
+│   └── test_stress_batch.py        # 500-row stress, empty & corrupted CSV tests
+├── requirements.txt                # Production runtime dependencies
 ├── .env.example                    # Environment configuration template
 ├── .gitignore                      # Git exclusion rules
-├── README.md                       # Complete documentation
-├── main.py                         # Root entrypoint forwarding to app/api/main.py
-└── app.py                          # Root entrypoint forwarding to app/frontend/streamlit_app.py
+├── README.md                       # Project documentation
+├── main.py                         # Root entrypoint for FastAPI backend
+└── app.py                          # Root entrypoint for Streamlit frontend
 ```
