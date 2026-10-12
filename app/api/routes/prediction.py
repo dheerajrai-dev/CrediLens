@@ -4,7 +4,7 @@ import pandas as pd
 
 from app.api.dependencies import get_prediction_service
 from app.services.prediction_service import PredictionService
-from app.core.exceptions import InvalidApplicantDataError, PredictionError, ModelNotLoadedError
+from app.core.exceptions import InvalidApplicantDataError, ModelNotLoadedError
 from app.schemas.credit import (
     ApplicantInput,
     PredictionResponse,
@@ -44,13 +44,14 @@ async def predict(
     try:
         return service.predict_single(applicant)
     except (InvalidApplicantDataError, ValueError) as ve:
-        raise HTTPException(status_code=400, detail=f"Validation error: {str(ve)}")
+        raise HTTPException(status_code=422, detail=f"Validation error: {str(ve)}")
     except ModelNotLoadedError as mne:
         raise HTTPException(status_code=503, detail=f"Service unavailable: {str(mne)}")
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Prediction error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
 @router.post("/batch-predict", response_model=BatchPredictionResponse)
+@router.post("/predict-batch", response_model=BatchPredictionResponse)
 async def batch_predict(
     file: UploadFile = File(...),
     service: PredictionService = Depends(get_prediction_service),
@@ -59,7 +60,8 @@ async def batch_predict(
     Runs batch predictions using exclusively the final selected calibrated model.
     Accepts CSV upload.
     """
-    if not file.filename.endswith((".csv", ".txt")):
+    filename = (file.filename or "").lower()
+    if not filename.endswith((".csv", ".txt")):
         raise HTTPException(status_code=400, detail="Uploaded file must be a CSV format.")
 
     try:

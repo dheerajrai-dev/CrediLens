@@ -1,8 +1,6 @@
-import json
 import logging
 import threading
-from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 
 import joblib
 import numpy as np
@@ -16,9 +14,9 @@ from app.core.config import (
     BEST_THRESHOLD_PATH,
     BASELINES_PATH,
     DATA_PATH,
-    MODEL_DIR,
 )
 from app.core.exceptions import (
+    CrediLensError,
     ModelNotLoadedError,
     PredictionError,
     InvalidApplicantDataError,
@@ -63,7 +61,7 @@ class PredictionService:
         self.preprocessor = None
         self.xgb_classifier = None
         self.explainer = None
-        self.threshold: float = 0.7431
+        self.threshold: float = 0.7632
         self.metrics: Dict[str, Any] = {}
         self.metadata: Dict[str, Any] = {}
         self.feature_names_out: List[str] = []
@@ -123,6 +121,15 @@ class PredictionService:
                 "pandas": "3.0.6",
                 "numpy": "2.5.3",
             },
+            "feature_columns": {
+                "numeric": [
+                    "person_age", "person_income", "person_emp_length", "loan_amnt",
+                    "loan_int_rate", "loan_percent_income", "cb_person_cred_hist_length"
+                ],
+                "categorical": [
+                    "person_home_ownership", "loan_intent", "loan_grade", "cb_person_default_on_file"
+                ]
+            },
         }
 
         self.metrics = {
@@ -132,7 +139,7 @@ class PredictionService:
             "precision": 0.9683,
             "recall": 0.6946,
             "f1": 0.8089,
-            "threshold": 0.7431,
+            "threshold": 0.7632,
         }
 
         # Load threshold
@@ -140,11 +147,12 @@ class PredictionService:
             try:
                 self.threshold = float(joblib.load(BEST_THRESHOLD_PATH))
             except Exception:
-                self.threshold = 0.7431
+                self.threshold = 0.7632
         elif "threshold" in self.metrics:
             self.threshold = float(self.metrics["threshold"])
         else:
-            self.threshold = 0.7431
+            self.threshold = 0.7632
+        self.metrics["threshold"] = round(self.threshold, 4)
 
         # Load final model
         if FINAL_MODEL_PATH.exists():
@@ -300,7 +308,7 @@ class PredictionService:
                     risk_band=risk_band,
                 ),
                 top_factors=top_factors,
-                applicant_data=df.iloc[0].to_dict(),
+                applicant_data={k: (v.item() if hasattr(v, "item") else v) for k, v in df.iloc[0].to_dict().items()},
             )
         except Exception as e:
             if isinstance(e, CrediLensError):
@@ -316,8 +324,8 @@ class PredictionService:
                 # Aggregate encoded one-hot columns back to original feature groups
                 feature_contribs = {}
                 for idx, fname in enumerate(self.feature_names_out):
-                    orig_col = fname.split("__")[-1].split("_")[0] if "__" in fname else fname
-                    for key in FEATURE_FRIENDLY_NAMES.keys():
+                    orig_col = fname
+                    for key in FEATURE_FRIENDLY_NAMES:
                         if fname.endswith(key) or key in fname:
                             orig_col = key
                             break
@@ -329,6 +337,8 @@ class PredictionService:
                 for fcol, contrib in sorted_factors[:6]:
                     direction = "increases_risk" if contrib > 0 else "decreases_risk"
                     raw_val = df.iloc[0].get(fcol, "N/A")
+                    if hasattr(raw_val, "item"):
+                        raw_val = raw_val.item()
                     friendly = FEATURE_FRIENDLY_NAMES.get(fcol, fcol)
                     desc = f"{friendly} ({raw_val}) {'raises' if contrib > 0 else 'lowers'} estimated risk by {abs(contrib):.3f} log-odds."
                     factors.append(FactorContribution(
@@ -476,15 +486,7 @@ class PredictionService:
             dataset=self.metadata.get("dataset", "credit_risk_dataset.csv"),
             target=self.metadata.get("target", "loan_status"),
             threshold=round(self.threshold, 4),
-            feature_columns=self.metadata.get("feature_columns", {
-                "numeric": [
-                    "person_age", "person_income", "person_emp_length", "loan_amnt",
-                    "loan_int_rate", "loan_percent_income", "cb_person_cred_hist_length"
-                ],
-                "categorical": [
-                    "person_home_ownership", "loan_intent", "loan_grade", "cb_person_default_on_file"
-                ]
-            }),
+            feature_columns=self.metadata["feature_columns"],
             train_size=self.metadata.get("train_size", 25217),
             test_size=self.metadata.get("test_size", 6305),
             training_date=self.metadata.get("training_date", "2026-10-11T07:01:55+00:00"),
@@ -667,6 +669,3 @@ class PredictionService:
             methodology=methodology,
             disclaimer=disclaimer,
         )
-
-# Backward-compatibility alias
-ModelService = PredictionService

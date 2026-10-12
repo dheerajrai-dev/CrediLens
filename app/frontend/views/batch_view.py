@@ -73,6 +73,10 @@ def render_batch_view(client):
             st.markdown(f"**Loaded Preview ({len(df_input)} rows):**")
             st.dataframe(df_input.head(5), use_container_width=True)
 
+            if len(df_input) == 0:
+                st.warning("Uploaded CSV contains no data rows to score.")
+                return
+
             with st.spinner("Scoring portfolio with Calibrated XGBoost..."):
                 batch_response = client.predict_batch(df_input)
 
@@ -83,7 +87,7 @@ def render_batch_view(client):
             avg_risk = batch_response["average_risk"]
             results = batch_response["results"]
 
-            if len(df_input) == 0 or len(results) == 0:
+            if len(results) == 0:
                 st.warning("Uploaded CSV contains no data rows to score.")
                 return
 

@@ -66,7 +66,7 @@ with st.sidebar:
             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                 <span style="color:#94a3b8;">FastAPI Service:</span>
                 <span style="color:{('#34d399' if api_online else '#fbbf24')}; font-weight:600;">
-                    {('Online (Port 8000)' if api_online else 'In-Process Standalone')}
+                    {(f'Online (Port {client.port})' if api_online else 'In-Process Standalone')}
                 </span>
             </div>
             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
@@ -75,7 +75,7 @@ with st.sidebar:
             </div>
             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                 <span style="color:#94a3b8;">Operating Cutoff:</span>
-                <span style="color:#f8fafc; font-weight:600;">{health.get('threshold', 0.7431):.4f}</span>
+                <span style="color:#f8fafc; font-weight:600;">{health.get('threshold', 0.7632):.4f}</span>
             </div>
             <div style="display:flex; justify-content:space-between;">
                 <span style="color:#94a3b8;">Dataset:</span>
