@@ -32,7 +32,7 @@ def render_explainability_view(client):
             tooltip=["label", "importance", "trend", "business_impact"]
         ).properties(height=340)
 
-        st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, width="stretch")
 
     with col2:
         st.markdown("### Signal Interpretation Guide")
@@ -66,7 +66,7 @@ def render_explainability_view(client):
             "trend": "Directional Effect",
             "business_impact": "Credit Underwriting Impact"
         }),
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
 
@@ -129,6 +129,7 @@ def render_explainability_view(client):
         sim_factors = sim_res.get("top_factors", [])
         if sim_factors:
             sf_df = pd.DataFrame(sim_factors)
+            sf_df["value"] = sf_df["value"].astype(str)
             sf_chart = alt.Chart(sf_df).mark_bar().encode(
                 y=alt.Y("feature_name:N", sort=None, title="Risk Factor"),
                 x=alt.X("contribution:Q", title="Log-Odds Shift (+ Raises Risk, - Lowers Risk)"),
@@ -139,7 +140,7 @@ def render_explainability_view(client):
                 tooltip=["feature_name", "value", "contribution", "description"]
             ).properties(height=220)
 
-            st.altair_chart(sf_chart, use_container_width=True)
+            st.altair_chart(sf_chart, width="stretch")
 
     # Attribution Disclaimer Card
     st.markdown("---")

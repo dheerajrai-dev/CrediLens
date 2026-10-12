@@ -37,7 +37,7 @@ def render_evaluation_view(client):
             subset=["Brier Score"],
             color="rgba(16, 185, 129, 0.3)"
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True
     )
 
@@ -134,7 +134,7 @@ def render_evaluation_view(client):
             strokeDash=[4, 4], color="#64748b"
         ).encode(x="x:Q", y="y:Q")
 
-        st.altair_chart(roc_chart + diag, use_container_width=True)
+        st.altair_chart(roc_chart + diag, width="stretch")
 
     with curve_tab2:
         st.markdown(
@@ -171,7 +171,7 @@ def render_evaluation_view(client):
             tooltip=["Model", "Recall", "Precision"]
         ).properties(height=360)
 
-        st.altair_chart(pr_chart, use_container_width=True)
+        st.altair_chart(pr_chart, width="stretch")
 
     with curve_tab3:
         st.markdown(
@@ -206,7 +206,7 @@ def render_evaluation_view(client):
             tooltip=["Type", "Mean Predicted Probability", "Fraction of Positives"]
         ).properties(height=360)
 
-        st.altair_chart(cal_chart, use_container_width=True)
+        st.altair_chart(cal_chart, width="stretch")
 
     # Confusion Matrix Explorer (Dropdown switchable as per spec!)
     st.markdown("### Confusion Matrix Explorer")

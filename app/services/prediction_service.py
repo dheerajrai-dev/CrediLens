@@ -344,7 +344,7 @@ class PredictionService:
                     factors.append(FactorContribution(
                         feature=fcol,
                         feature_name=friendly,
-                        value=raw_val,
+                        value=str(raw_val),
                         contribution=round(contrib, 4),
                         direction=direction,
                         description=desc,

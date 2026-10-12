@@ -66,7 +66,7 @@ def render_prediction_view(client):
     with col_reset:
         st.write("")
         st.write("")
-        if st.button("Reset Form", use_container_width=True):
+        if st.button("Reset Form", width="stretch"):
             st.session_state["applicant_form"] = PRESETS["Prime Low-Risk Borrower"].copy()
             st.rerun()
 
@@ -139,7 +139,7 @@ def render_prediction_view(client):
                 value=int(form_defaults["cb_person_cred_hist_length"])
             )
             st.markdown("<br>", unsafe_allow_html=True)
-            submit_btn = st.form_submit_button("Generate Prediction", use_container_width=True)
+            submit_btn = st.form_submit_button("Generate Prediction", width="stretch")
 
     if submit_btn or "last_prediction" in st.session_state:
         if submit_btn:
@@ -289,7 +289,7 @@ def render_prediction_view(client):
             color="#ef4444", strokeDash=[6, 4], strokeWidth=2
         ).encode(y="y:Q")
 
-        st.altair_chart(chart + rule, use_container_width=True)
+        st.altair_chart(chart + rule, width="stretch")
 
         # Local Explainability Section
         st.markdown("### Local Explainability (SHAP Risk Factors)")

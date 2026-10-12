@@ -48,7 +48,7 @@ def render_batch_view(client):
             data=SAMPLE_CSV_DATA,
             file_name="sample_applicants.csv",
             mime="text/csv",
-            use_container_width=True
+            width="stretch"
         )
         st.caption("Contains 10 diverse applicant rows ready for direct batch testing.")
 
@@ -71,7 +71,7 @@ def render_batch_view(client):
                 df_input = pd.read_csv(uploaded_file)
 
             st.markdown(f"**Loaded Preview ({len(df_input)} rows):**")
-            st.dataframe(df_input.head(5), use_container_width=True)
+            st.dataframe(df_input.head(5), width="stretch")
 
             if len(df_input) == 0:
                 st.warning("Uploaded CSV contains no data rows to score.")
@@ -153,7 +153,7 @@ def render_batch_view(client):
             st.markdown("### Detailed Scoring Results")
             st.dataframe(
                 combined_df,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True
             )
 
@@ -172,7 +172,7 @@ def render_batch_view(client):
                 tooltip=["Risk_Band", "Count"]
             ).properties(height=240)
 
-            st.altair_chart(band_chart, use_container_width=True)
+            st.altair_chart(band_chart, width="stretch")
 
             # Download Result CSV Button
             out_csv = combined_df.to_csv(index=False).encode("utf-8")
@@ -181,7 +181,7 @@ def render_batch_view(client):
                 data=out_csv,
                 file_name="credilens_scored_batch.csv",
                 mime="text/csv",
-                use_container_width=True
+                width="stretch"
             )
 
         except Exception as e:
