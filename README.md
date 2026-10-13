@@ -1,174 +1,196 @@
-# CrediLens — Explainable Credit Risk Prediction & Decision Support System
+# CrediLens
 
-[![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.14-blue.svg)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.143.0-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.65.0-FF4B4B.svg?logo=streamlit)](https://streamlit.io)
-[![XGBoost](https://img.shields.io/badge/XGBoost-Calibrated-orange.svg)](https://xgboost.readthedocs.io/)
-[![Tests](https://img.shields.io/badge/Tests-34%20Passing-brightgreen.svg)]()
-[![Code Quality](https://img.shields.io/badge/Stability-Production--Hardened-success.svg)]()
+**Explainable credit risk prediction and decision support.** CrediLens scores loan applicants for default risk, compares four trained models on the same record, and explains each prediction with TreeSHAP. A FastAPI service handles inference and a Streamlit dashboard sits on top of it.
 
-**CrediLens** is an end-to-end Machine Learning decision support platform designed to estimate the probability of loan default on structured applicant data. The system combines a modern **Streamlit** Glassmorphism dashboard, a high-throughput **FastAPI** inference backend, and a tuned **XGBoost** model calibrated with Platt/Sigmoid scaling for mathematically sound, well-calibrated risk scoring.
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688.svg?logo=fastapi&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-frontend-FF4B4B.svg?logo=streamlit&logoColor=white)
+![XGBoost](https://img.shields.io/badge/XGBoost-calibrated-orange.svg)
+![SHAP](https://img.shields.io/badge/SHAP-TreeSHAP-8A2BE2.svg)
+
+<p align="center">
+  <img src="screenshots/risk-prediction.png" alt="CrediLens risk prediction page: decision card, four-model comparison and local SHAP factors" width="900">
+</p>
 
 ---
 
-## 1. System Architecture
+## Contents
 
-CrediLens is structured into a modular, production-ready serving architecture:
+- [Key features](#key-features)
+- [Screenshots](#screenshots)
+- [Machine learning workflow](#machine-learning-workflow)
+- [Model results](#model-results)
+- [Explainability](#explainability)
+- [Architecture](#architecture)
+- [Tech stack](#tech-stack)
+- [Getting started](#getting-started)
+- [API reference](#api-reference)
+- [Input schema](#input-schema)
+- [Project structure](#project-structure)
+- [Testing](#testing)
+- [Scope and limitations](#scope-and-limitations)
+- [Possible improvements](#possible-improvements)
+
+---
+
+## Key features
+
+| Area | What it does |
+| :--- | :--- |
+| **Risk prediction** | Form for 11 applicant and loan attributes with input validation and three preset profiles (prime low-risk, borderline moderate-risk, high-risk). Returns a default probability, an approve/deny recommendation, a risk tier and the distance to the decision threshold. |
+| **Model comparison** | Shows default probabilities from Logistic Regression, Decision Tree, Random Forest and the calibrated XGBoost model for the same applicant. |
+| **Local explanations** | Lists the top risk-increasing and risk-decreasing features for a prediction, with SHAP contributions in log-odds. |
+| **Model evaluation** | Benchmark table, grouped metric chart, ROC / precision-recall / calibration tabs, a selection rationale and a per-model confusion matrix explorer. |
+| **Global explainability** | Feature importance ranking, an attribution directory with plain-language underwriting notes, and a what-if simulator. |
+| **Batch scoring** | Upload a CSV, score every row with the final model, view portfolio summary statistics and download the scored file. A sample template and a one-click 10-applicant test run are included. |
+| **REST API** | Pydantic v2 request and response schemas, plus Swagger and ReDoc docs. |
+| **Fallback mode** | The dashboard calls the API over HTTP when it is running and falls back to in-process inference when it is not. |
+
+---
+
+## Screenshots
+
+### Risk prediction
+Decision card, four-model comparison and local SHAP factors for a single applicant.
+
+<p align="center">
+  <img src="screenshots/risk-prediction.png" alt="Risk prediction page" width="900">
+</p>
+
+### Model evaluation
+Benchmark metrics, ROC curves, selection rationale and confusion matrix explorer.
+
+<p align="center">
+  <img src="screenshots/model-evaluation.png" alt="Model evaluation page" width="900">
+</p>
+
+### Explainability and what-if simulator
+Global TreeSHAP ranking, attribution directory and the interactive simulator.
+
+<p align="center">
+  <img src="screenshots/explainability-shap.png" alt="Explainability and SHAP insights page" width="900">
+</p>
+
+---
+
+## Machine learning workflow
+
+1. **Data.** Structured credit-risk data of about 32.5k applicants with 11 input features (see [Input schema](#input-schema)). Roughly 22% of records are defaults, so the classes are imbalanced. Evaluation uses a held-out test set of 6,305 applicants.
+2. **Preprocessing.** A scikit-learn `ColumnTransformer` pipeline with imputation and one-hot encoding of categorical fields, bundled with the model so inference applies the same transformations as training.
+3. **Models.** Logistic Regression, Decision Tree and Random Forest as baselines, and a tuned XGBoost classifier as the candidate final model.
+4. **Calibration.** The XGBoost model is wrapped with sigmoid (Platt) calibration so its outputs behave as probabilities. Reliability curves and Brier score are shown on the evaluation page.
+5. **Decision threshold.** A tuned operating cutoff of **0.6716** is stored separately from the model. An applicant is flagged as a predicted default when the calibrated probability is at or above it.
+6. **Explainability.** TreeSHAP attributions are computed for the XGBoost model, locally per applicant and globally across the dataset.
+7. **Serving.** The pipeline, threshold and cached baseline models are loaded once at API startup and shared by the API and the dashboard.
+
+---
+
+## Model results
+
+Evaluated on 6,305 held-out applicants. The best value in each column is in bold.
+
+| Model | ROC-AUC | PR-AUC | Precision | Recall | F1 |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **XGBoost (tuned + sigmoid-calibrated)** — final model | **0.9471** | **0.9043** | **0.9703** | 0.7445 | **0.8425** |
+| Random Forest | 0.9284 | 0.8803 | 0.9656 | 0.7172 | 0.8230 |
+| Decision Tree | 0.8417 | 0.6052 | 0.7266 | 0.7624 | 0.7440 |
+| Logistic Regression | 0.8705 | 0.7135 | 0.5448 | **0.7781** | 0.6408 |
+
+The calibrated XGBoost model has a Brier score of 0.0661.
+
+**Why XGBoost was selected.** It has the best ranking quality (ROC-AUC, PR-AUC), the highest precision and F1 score, and sigmoid calibration gives it well-behaved probabilities, which matters for a risk score. It achieves 94% accuracy and an F1 score of 0.84 at its optimal operating threshold (0.6716). The confusion matrix explorer on the evaluation page shows the counts for each model.
+
+---
+
+## Explainability
+
+- **Local:** each prediction returns the strongest risk-increasing and risk-decreasing features with their SHAP contributions in log-odds.
+- **Global:** a ranking of features by mean absolute SHAP value, with a short underwriting interpretation of each (for example, how loan-to-income ratio and interest rate affect repayment burden).
+- **What-if simulator:** change income, loan amount, interest rate, employment tenure, home ownership or default history and see the simulated probability and attribution chart update.
+
+SHAP values describe what the trained model relies on. They are not causal claims about borrowers.
+
+---
+
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                       Streamlit Frontend                        │
-│                                                                 │
-│  [1. Risk Prediction]           [2. Model Evaluation]           │
-│  [3. Explainability & SHAP]     [4. Batch CSV Scoring]          │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │ HTTP JSON / In-Process Fallback
-                                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                         FastAPI Backend                         │
-│                                                                 │
-│  GET  /health                   GET  /model-info                │
-│  POST /predict                  POST /batch-predict             │
-│  POST /predict-batch (alias)    GET  /explainability            │
-│  GET  /evaluation                                               │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      ML Inference Engine                        │
-│                                                                 │
-│  - Preprocessing Pipeline (ColumnTransformer, OneHot, Imputer)  │
-│  - Champion Model (Tuned Sigmoid-Calibrated XGBoost)            │
-│  - 3 Baseline Comparison Models (LR, DT, Random Forest)         │
-│  - TreeSHAP Feature Attributions (Local Waterfall & Global)     │
-│  - Threshold Decision Engine (Operating Cutoff: 0.7632)         │
-└─────────────────────────────────────────────────────────────────┘
+Streamlit dashboard  ──(HTTP JSON, or in-process fallback)──▶  FastAPI service  ──▶  Inference engine
+ - Risk prediction                                              - /predict                - Preprocessing + calibrated XGBoost
+ - Model evaluation                                             - /batch-predict           - Baseline models (LR, DT, RF)
+ - Explainability & SHAP                                        - /evaluation              - TreeSHAP attributions
+ - Batch prediction                                             - /explainability          - Threshold decision (0.6716)
 ```
 
-### Architectural Key Principles
-1. **Strict RESTful API Contracts**: Standardized Pydantic v2 schemas across all inference, evaluation, and system endpoints.
-2. **Dual-Route Batch Support**: Exposes both `/batch-predict` and `/predict-batch` aliases to ensure broad client compatibility.
-3. **Resilient Dual Mode**: The Streamlit frontend connects over HTTP to the FastAPI service when online, and automatically falls back to direct in-process inference if run standalone.
-4. **Reactive Frontend**: The root entrypoint (`app.py`) delegates cleanly to `app.frontend.streamlit_app.main()`, ensuring complete state preservation and re-rendering across all user interactions without blank-screen regressions.
+The root `app.py` delegates to `app.frontend.streamlit_app.main()`, and `main.py` starts the API.
 
 ---
 
-## 2. Core Functional Modules
+## Tech stack
 
-### 🎯 1. Risk Prediction
-- **Interactive Form**: Captures 11 applicant and loan attributes with instant input validation.
-- **One-Click Presets**: Pre-populated profiles (*Prime Low-Risk*, *Borderline Moderate-Risk*, *High-Risk Solvency Distressed*).
-- **Four-Model Observation**: Side-by-side comparison displaying default probabilities across **Logistic Regression**, **Decision Tree**, **Random Forest**, and the official **Calibrated XGBoost**.
-- **Underwriting Decision Card**: Displays recommendation (*Approve* vs *Deny*), operating threshold cutoff (0.7632), certainty buffer, and risk tier categorization (*Low*, *Moderate*, *High*, *Critical*).
-- **Local SHAP Breakdown**: Dynamic attribution listing top risk-elevating (red) and risk-mitigating (green) feature drivers.
+| Layer | Tools |
+| :--- | :--- |
+| Language | Python 3.10+ |
+| Modeling | XGBoost, scikit-learn (preprocessing pipeline, Logistic Regression, Decision Tree, Random Forest, calibration) |
+| Explainability | SHAP (TreeSHAP) |
+| API | FastAPI, Pydantic v2 |
+| Frontend | Streamlit, Altair charts, custom CSS theme |
+| Testing | Python `unittest` |
 
-### 📊 2. Model Evaluation & Benchmarks
-- **Benchmark Metrics Table**: Comprehensive multi-model evaluation across held-out test data (6,305 applicants).
-- **Multi-Metric Comparative Chart**: Grouped Altair bar charts comparing ROC-AUC, PR-AUC, Precision, Recall, and F1-Score across all 4 architectures.
-- **Diagnostic Curve Tabs**:
-  - **ROC Curves**: True Positive Rate vs False Positive Rate for all models.
-  - **Precision-Recall Curves**: PR-AUC under dataset class imbalance (~21.8% default rate).
-  - **Calibration Reliability**: Uncalibrated vs Sigmoid Calibrated reliability curves and empirical Brier scores.
-- **Model Selection Rationale**: Clear, auditable explanation of why Calibrated XGBoost was selected over baseline alternatives.
-
-### 🔍 3. Explainability & SHAP Insights
-- **Global TreeSHAP Importance**: Ranked relative impact weights across the portfolio.
-- **Underwriting Insights Directory**: Plain-language risk interpretations explaining financial mechanics (e.g. debt-to-income impact, interest rate burden).
-- **Interactive What-If Simulator**: Real-time slider simulator showing how adjusting income, loan amount, interest rate, or tenure shifts the model's prediction.
-
-### 📁 4. Batch Prediction Utility
-- **High-Throughput Scoring**: Evaluates multi-applicant CSV portfolios exclusively using the champion Calibrated XGBoost model.
-- **Sample Template**: Downloadable 10-applicant sample CSV template.
-- **Quick Test Runner**: Instant one-click evaluation of 10 diverse test applicants.
-- **Portfolio Analytics**: Aggregated default rate %, average portfolio risk score, and risk tier distribution bar chart.
-- **Export**: One-click download of scored results with predicted probabilities, decisions, and risk bands.
+Exact package versions are pinned in `requirements.txt`.
 
 ---
 
-## 3. Benchmark Model Performance
+## Getting started
 
-Evaluation on 6,305 held-out test records:
+**Prerequisites:** Python 3.10 or newer and Git.
 
-| Model Architecture | Model Tier | ROC-AUC | PR-AUC | Precision | Recall | F1-Score | Brier Score |
-| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
-| **XGBoost (Tuned + Calibrated)** | **Champion** | **0.9471** | **0.9043** | **96.83%** | 69.46% | **80.89%** | **0.0661** |
-| Random Forest | Baseline | 0.9284 | 0.8803 | 96.56% | 71.72% | 82.30% | 0.0820 |
-| Decision Tree | Baseline | 0.8417 | 0.6052 | 72.66% | 76.24% | 74.40% | 0.1583 |
-| Logistic Regression | Baseline | 0.8705 | 0.7135 | 54.48% | 77.81% | 64.08% | 0.1245 |
-
-> **Key Insight**: The Sigmoid-Calibrated XGBoost model achieves the lowest Brier Score (`0.0661`) and highest Precision (`96.83%`), minimizing false approvals while outputting true, reliable default probabilities.
-
----
-
-## 4. Applicant Feature Schema
-
-The system validates 11 core financial and demographic features:
-
-| Field Name | Type | Valid Range / Categories | Description |
-| :--- | :---: | :---: | :--- |
-| `person_age` | Integer | 18 – 100 | Applicant age in years |
-| `person_income` | Float | $1,000 – $2,000,000 | Annual income in USD |
-| `person_home_ownership` | String | `RENT`, `MORTGAGE`, `OWN`, `OTHER` | Housing status |
-| `person_emp_length` | Float | 0.0 – 60.0 | Employment tenure in years |
-| `loan_intent` | String | `PERSONAL`, `EDUCATION`, `MEDICAL`, `VENTURE`, `HOMEIMPROVEMENT`, `DEBTCONSOLIDATION` | Purpose of requested loan |
-| `loan_grade` | String | `A`, `B`, `C`, `D`, `E`, `F`, `G` | Risk grade assigned by credit bureau |
-| `loan_amnt` | Float | $500 – $50,000 | Requested principal amount |
-| `loan_int_rate` | Float | 1.0% – 40.0% | Annual percentage interest rate |
-| `loan_percent_income` | Float | 0.0 – 1.5 | Debt-to-income ratio (`loan_amnt / income`) |
-| `cb_person_default_on_file` | String | `Y`, `N` | Historical default flag on bureau record |
-| `cb_person_cred_hist_length`| Integer | 0 – 50 | Length of credit history in years |
-
----
-
-## 5. Quickstart & Installation
-
-### Prerequisites
-- Python 3.10+ (tested through Python 3.14)
-- Git
-
-### Step 1: Clone and Set Up Virtual Environment
 ```bash
 git clone https://github.com/dheerajrai-dev/Credlen.git
 cd Credlen
 
 python -m venv .venv
-# Windows PowerShell:
+# Windows PowerShell
 .\.venv\Scripts\Activate.ps1
-# Linux / macOS:
+# Linux / macOS
 source .venv/bin/activate
-```
 
-### Step 2: Install Dependencies
-```bash
 pip install -r requirements.txt
 ```
 
-### Step 3: Run the Test Suite
-Verify that all 34 automated unit, integration, and stress tests pass:
-```bash
-python -m unittest discover tests -v
-```
+**Start the API** (optional, the dashboard falls back to in-process inference without it):
 
-### Step 4: Launch the FastAPI Backend
 ```bash
 python main.py
 ```
-- Server starts at `http://127.0.0.1:8000`
-- Interactive Swagger UI: `http://127.0.0.1:8000/docs`
-- Redoc Documentation: `http://127.0.0.1:8000/redoc`
 
-### Step 5: Launch the Streamlit Frontend
-In a new terminal window:
+The API runs at `http://127.0.0.1:8000`, with Swagger UI at `/docs` and ReDoc at `/redoc`.
+
+**Start the dashboard** in a second terminal:
+
 ```bash
 streamlit run app.py
 ```
-- Open `http://localhost:8501` in your browser.
+
+Open `http://localhost:8501`. The sidebar shows whether the FastAPI service is online.
+
+An `.env.example` template is included in the repository root.
 
 ---
 
-## 6. API Reference & Usage Examples
+## API reference
 
-### 1. Single Loan Risk Scoring (`POST /predict`)
+| Method | Endpoint | Purpose |
+| :--- | :--- | :--- |
+| `GET` | `/health` | Service status, whether the model is loaded, model name, threshold |
+| `GET` | `/model-info` | Model metadata |
+| `POST` | `/predict` | Score one applicant |
+| `POST` | `/batch-predict` | Score a CSV of applicants (also available as `/predict-batch`) |
+| `GET` | `/evaluation` | Benchmark metrics used by the evaluation page |
+| `GET` | `/explainability` | Global TreeSHAP importance data |
+
+### Score a single applicant
+
 ```bash
 curl -X POST "http://127.0.0.1:8000/predict" \
      -H "Content-Type: application/json" \
@@ -187,138 +209,95 @@ curl -X POST "http://127.0.0.1:8000/predict" \
      }'
 ```
 
-**Response (HTTP 200)**:
+The response contains `applicant_data`, `predictions` (one probability per model), `final_model` and `top_factors`. The `final_model` block for this applicant, abridged:
+
 ```json
 {
-  "applicant_data": { ... },
-  "predictions": {
-    "logistic_regression": 0.1478,
-    "decision_tree": 0.0,
-    "random_forest": 0.021,
-    "xgboost": 0.0159
-  },
-  "final_model": {
-    "name": "Calibrated XGBoost (Sigmoid)",
-    "probability": 0.0159,
-    "threshold": 0.7632,
-    "decision": "Repaid",
-    "risk_band": "Low"
-  },
-  "top_factors": [
-    {
-      "feature_name": "loan_percent_income",
-      "contribution": -0.842,
-      "direction": "decreases_risk",
-      "description": "Favorable debt-to-income ratio lowers default likelihood."
-    }
-  ]
+  "name": "Calibrated XGBoost (Sigmoid)",
+  "probability": 0.0159,
+  "threshold": 0.6716,
+  "decision": "Repaid",
+  "risk_band": "Low"
 }
 ```
 
-### 2. Batch Portfolio Scoring (`POST /batch-predict` or `POST /predict-batch`)
+### Score a CSV
+
 ```bash
-curl -X POST "http://127.0.0.1:8000/batch-predict" \
-     -F "file=@credit_risk_dataset.csv"
+curl -X POST "http://127.0.0.1:8000/batch-predict" -F "file=@applicants.csv"
 ```
 
-**Response (HTTP 200)**:
-```json
-{
-  "total_records": 10,
-  "predicted_defaults": 5,
-  "predicted_repays": 5,
-  "default_rate": 50.0,
-  "average_risk": 0.505,
-  "results": [ ... ]
-}
-```
-
-### 3. Service Health & Readiness (`GET /health`)
-```bash
-curl "http://127.0.0.1:8000/health"
-```
-
-**Response (HTTP 200)**:
-```json
-{
-  "status": "healthy",
-  "model_loaded": true,
-  "model_name": "Calibrated XGBoost (Sigmoid)",
-  "threshold": 0.7632,
-  "uptime_seconds": 124.5
-}
-```
+The CSV needs the 11 columns listed below. A template can be downloaded from the Batch Prediction page. The response reports total records, predicted defaults and repayments, default rate, average risk and per-row results.
 
 ---
 
-## 7. Directory Structure
+## Input schema
+
+| Field | Type | Valid values | Description |
+| :--- | :---: | :--- | :--- |
+| `person_age` | int | 18 – 100 | Age in years |
+| `person_income` | float | 1,000 – 2,000,000 | Annual income (USD) |
+| `person_home_ownership` | str | `RENT`, `MORTGAGE`, `OWN`, `OTHER` | Housing status |
+| `person_emp_length` | float | 0 – 60 | Employment length in years |
+| `loan_intent` | str | `PERSONAL`, `EDUCATION`, `MEDICAL`, `VENTURE`, `HOMEIMPROVEMENT`, `DEBTCONSOLIDATION` | Loan purpose |
+| `loan_grade` | str | `A` – `G` | Loan risk grade |
+| `loan_amnt` | float | 500 – 50,000 | Requested amount (USD) |
+| `loan_int_rate` | float | 1.0 – 40.0 | Annual interest rate (%) |
+| `loan_percent_income` | float | 0.0 – 1.5 | Loan amount divided by income |
+| `cb_person_default_on_file` | str | `Y`, `N` | Prior default on credit record |
+| `cb_person_cred_hist_length` | int | 0 – 50 | Credit history length in years |
+
+---
+
+## Project structure
 
 ```text
 Credlen/
+├── app.py                      # Streamlit entrypoint
+├── main.py                     # FastAPI entrypoint
 ├── app/
-│   ├── api/
-│   │   ├── main.py                 # FastAPI application, CORS & root routes
-│   │   ├── lifespan.py             # Model lifecycle manager (startup/shutdown)
-│   │   ├── dependencies.py         # Request state dependency injection
-│   │   └── routes/
-│   │       └── prediction.py       # Prediction, evaluation & dual batch routes
-│   ├── frontend/
-│   │   ├── streamlit_app.py        # Streamlit layout, navigation & main() entrypoint
-│   │   ├── api_client.py           # HTTP client with in-process fallback
-│   │   ├── styles.py               # Glassmorphism CSS design system
-│   │   └── views/
-│   │       ├── prediction_view.py  # 1. Single risk prediction & 4-model comparison
-│   │       ├── evaluation_view.py  # 2. Comprehensive benchmark evaluation & curves
-│   │       ├── explainability_view.py # 3. TreeSHAP global & local attribution
-│   │       └── batch_view.py       # 4. Final-model batch CSV scoring utility
-│   ├── services/
-│   │   └── prediction_service.py   # Prediction & explainability engine
-│   ├── schemas/
-│   │   └── credit.py               # Pydantic request/response schemas
-│   └── core/
-│       ├── config.py               # Dynamic path resolution & configs
-│       └── exceptions.py           # Domain-specific custom exceptions
-├── models/                         # Serialized ML artifacts
-│   ├── Credit_risk_model.pkl       # Calibrated XGBoost pipeline
-│   ├── best_threshold.pkl          # Optimal decision threshold (0.7632)
-│   └── baselines.joblib            # Pre-cached baseline models (LR, DT, RF)
-├── tests/                          # 34 automated regression & stress tests
-│   ├── test_api.py                 # FastAPI endpoint & lifespan tests
-│   ├── test_frontend.py            # ApiClient & Streamlit entrypoint tests
-│   ├── test_services.py            # PredictionService unit tests
-│   ├── test_m2_adversarial.py      # Boundary values & malformed payload tests
-│   └── test_stress_batch.py        # 500-row stress, empty & corrupted CSV tests
-├── docs/                           # Architecture, PRD & design specifications
-├── requirements.txt                # Production runtime dependencies
-├── .env.example                    # Environment configuration template
-├── .gitignore                      # Git exclusion rules
-├── README.md                       # Complete documentation
-├── main.py                         # Root entrypoint for FastAPI backend
-└── app.py                          # Root entrypoint for Streamlit frontend
+│   ├── api/                    # FastAPI app, lifespan, dependencies, routes/prediction.py
+│   ├── frontend/               # streamlit_app.py, api_client.py, styles.py, views/
+│   │   └── views/              # prediction, evaluation, explainability, batch pages
+│   ├── services/               # prediction_service.py (inference and SHAP)
+│   ├── schemas/                # Pydantic request/response models (credit.py)
+│   └── core/                   # config.py, exceptions.py
+├── models/                     # Credit_risk_model.pkl, best_threshold.pkl, baselines.joblib
+├── tests/                      # API, frontend, service, adversarial and stress tests
+├── screenshots/                # screenshots
+├── requirements.txt
+└── .env.example
 ```
 
 ---
 
-## 8. Automated Test Suite (34 Tests)
-
-The test suite covers full regression, boundary conditions, and adversarial inputs:
+## Testing
 
 ```bash
 python -m unittest discover tests -v
 ```
 
-| Test Module | Tests | Focus Areas |
+| Module | Tests | Covers |
 | :--- | :---: | :--- |
-| `test_api.py` | 12 | Endpoints (`/`, `/health`, `/model-info`, `/predict`, `/batch-predict`, `/predict-batch`, `/evaluation`, `/explainability`), boundary 422 validations, CSV extension handling. |
-| `test_frontend.py` | 5 | `ApiClient` HTTP communications, health probes, predict/batch workflows, and verifies that `streamlit_app` exposes a callable `main()`. |
-| `test_services.py` | 5 | ML engine initialization, single scoring, batch scoring, baseline comparisons, and TreeSHAP calculations. |
-| `test_m2_adversarial.py` | 4 | All 16 boundary combinations of applicant inputs, extreme ages, maximum incomes, and malformed payload bodies. |
-| `test_stress_batch.py` | 8 | 500-row batch stress tests, 0-byte files, header-only CSVs, missing columns, non-numeric values, and corrupted extensions. |
-
-**Result**: `34 passed in ~9.5s (100% pass rate, 0 failures, 0 errors)`.
+| `test_api.py` | 12 | All endpoints, input validation (422 responses), CSV extension handling |
+| `test_frontend.py` | 5 | API client, health probe, predict and batch flows, `main()` entrypoint |
+| `test_services.py` | 5 | Engine startup, single and batch scoring, baseline comparison, SHAP |
+| `test_m2_adversarial.py` | 4 | Boundary values, extreme inputs, malformed payloads |
+| `test_stress_batch.py` | 8 | 500-row batch, empty, header-only, malformed and non-numeric CSVs |
 
 ---
 
-## 9. License & Attribution
+## Scope and limitations
 
-Developed as an academic Machine Learning portfolio demonstrating production-grade software engineering, explainable artificial intelligence (TreeSHAP), and calibrated risk underwriting.
+CrediLens is an academic portfolio project built on a single public-style tabular dataset. It has not been validated for real lending decisions, and no fairness or bias audit has been done. The 0.6716 threshold is tuned for this dataset and would need to be re-derived for any other population or cost trade-off.
+
+---
+
+## Possible improvements
+
+These are not implemented.
+
+- Include the training and tuning code in the repository so the models can be rebuilt end to end.
+- Add a fairness and subgroup performance analysis.
+- Containerize the API and dashboard and run the tests in CI.
+- Monitor input drift and recalibrate periodically.

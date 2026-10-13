@@ -75,7 +75,7 @@ def main():
                 </div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                     <span style="color:#94a3b8;">Operating Cutoff:</span>
-                    <span style="color:#f8fafc; font-weight:600;">{health.get('threshold', 0.7632):.4f}</span>
+                    <span style="color:#f8fafc; font-weight:600;">{health.get('threshold', 0.6716):.4f}</span>
                 </div>
                 <div style="display:flex; justify-content:space-between;">
                     <span style="color:#94a3b8;">Dataset:</span>

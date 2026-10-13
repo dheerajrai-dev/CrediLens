@@ -61,7 +61,7 @@ class PredictionService:
         self.preprocessor = None
         self.xgb_classifier = None
         self.explainer = None
-        self.threshold: float = 0.7632
+        self.threshold: float = 0.6716
         self.metrics: Dict[str, Any] = {}
         self.metadata: Dict[str, Any] = {}
         self.feature_names_out: List[str] = []
@@ -133,13 +133,14 @@ class PredictionService:
         }
 
         self.metrics = {
-            "roc_auc": 0.9352,
-            "pr_auc": 0.8802,
+            "roc_auc": 0.9471,
+            "pr_auc": 0.9043,
             "brier": 0.0661,
-            "precision": 0.9683,
-            "recall": 0.6946,
-            "f1": 0.8089,
-            "threshold": 0.7632,
+            "precision": 0.96,
+            "recall": 0.74,
+            "f1": 0.84,
+            "accuracy": 0.94,
+            "threshold": 0.6716,
         }
 
         # Load threshold
@@ -147,11 +148,11 @@ class PredictionService:
             try:
                 self.threshold = float(joblib.load(BEST_THRESHOLD_PATH))
             except Exception:
-                self.threshold = 0.7632
+                self.threshold = 0.6716
         elif "threshold" in self.metrics:
             self.threshold = float(self.metrics["threshold"])
         else:
-            self.threshold = 0.7632
+            self.threshold = 0.6716
         self.metrics["threshold"] = round(self.threshold, 4)
 
         # Load final model
@@ -535,10 +536,10 @@ class PredictionService:
                 model="XGBoost (Tuned + Calibrated)",
                 roc_auc=0.9471,
                 pr_auc=0.9043,
-                precision=0.9683,
-                recall=0.6946,
-                f1_score=0.8089,
-                accuracy=0.9412,
+                precision=0.9703,
+                recall=0.7445,
+                f1_score=0.8425,
+                accuracy=0.9399,
                 brier_score=0.0661,
             ),
         ]
